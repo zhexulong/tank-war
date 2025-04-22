@@ -1,0 +1,77 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""
+坦克世界大战游戏启动脚本
+
+这个脚本提供了几种不同的游戏启动模式：
+1. 人类玩家对战模式
+2. 人类玩家vs AI模式
+3. AI对战模式
+4. AI训练模式
+"""
+
+import os
+import sys
+import argparse
+
+def main():
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(description='坦克世界大战游戏')
+    parser.add_argument('--mode', type=str, default='human_vs_ai',
+                        choices=['human_vs_human', 'human_vs_ai', 'ai_vs_ai', 'train'],
+                        help='游戏模式')
+    parser.add_argument('--agent', type=str, default=None,
+                        help='AI智能体模型路径')
+    parser.add_argument('--episodes', type=int, default=1000,
+                        help='训练回合数')
+    parser.add_argument('--render', action='store_true',
+                        help='是否渲染游戏画面')
+    args = parser.parse_args()
+    
+    # 根据模式启动游戏
+    if args.mode == 'human_vs_human':
+        # 人类玩家对战模式
+        from main import main as start_game
+        start_game()
+    
+    elif args.mode == 'human_vs_ai':
+        # 人类玩家vs AI模式
+        from main import main as start_game
+        start_game(ai_opponent=True, ai_model_path=args.agent)
+    
+    elif args.mode == 'ai_vs_ai':
+        # AI对战模式
+        from ai.training import evaluate_agent
+        evaluate_agent(args.agent, episodes=10, render=True)
+    
+    elif args.mode == 'train':
+        # AI训练模式
+        from ai.training import train_single_agent, train_multi_agent
+        train_single_agent(episodes=args.episodes, render=args.render)
+
+if __name__ == '__main__':
+    # 创建必要的目录
+    directories = [
+        "game", "game/entities", "game/map", "game/ui",
+        "ai", "data", "assets", "models"
+    ]
+    
+    for directory in directories:
+        os.makedirs(directory, exist_ok=True)
+    
+    # 创建__init__.py文件
+    init_files = [
+        "ai/__init__.py",
+        "data/__init__.py",
+        "game/entities/__init__.py",
+        "game/map/__init__.py",
+        "game/ui/__init__.py"
+    ]
+    
+    for init_file in init_files:
+        if not os.path.exists(init_file):
+            with open(init_file, 'w') as f:
+                f.write(f"# {init_file.split('/')[-2]} 包初始化文件\n")
+    
+    main()
