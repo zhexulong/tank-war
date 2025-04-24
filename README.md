@@ -53,12 +53,18 @@ conda activate tank_game
 
 2. 安装依赖:
 ```bash
-pip install pygame numpy gymnasium
-# 根据需求选择安装PyTorch或TensorFlow
-pip install torch  # 或 tensorflow
+pip install -r requirements.txt
+pip install onnx torch torchvision --index-url https://pypi.tuna.tsinghua.edu.cn/simple --extra-index-url https://download.pytorch.org/whl/cu121
 ```
 
 3. 运行游戏:
+
+- 人类 vs 人类
 ```bash
-python main.py  # 假设入口文件是main.py
+python run_game.py --render --mode human_vs_human
+```
+
+- 训练
+```bash
+python run_game.py --mode train
 ```

@@ -3,6 +3,7 @@ import pygame
 from typing import List, Tuple, Dict
 
 from game.config import MAP_WIDTH, MAP_HEIGHT, TILE_SIZE, TERRAIN_TYPES, TERRAIN_COLORS
+from game.map.terrain_textures import TerrainTextures
 
 class GameMap:
     """游戏地图类，存储和管理地图数据"""
@@ -12,6 +13,7 @@ class GameMap:
         self.height = height
         self.tile_size = tile_size
         self.tiles = [[TERRAIN_TYPES["empty"] for _ in range(height)] for _ in range(width)]
+        self.terrain_textures = TerrainTextures()
     
     def get_tile(self, x: int, y: int) -> int:
         """获取指定位置的地形类型"""
@@ -30,24 +32,22 @@ class GameMap:
             for y in range(self.height):
                 tile_type = self.tiles[x][y]
                 if tile_type != TERRAIN_TYPES["empty"]:
-                    # 绘制3x3的砖墙和钢墙
-                    if tile_type in [TERRAIN_TYPES["brick"], TERRAIN_TYPES["steel"]]:
-                        # 计算3x3网格的基准位置
-                        base_x = x * self.tile_size
-                        base_y = y * self.tile_size
-                        
-                        # 绘制3x3的小方块
-                        for i in range(3):
-                            for j in range(3):
-                                block_rect = pygame.Rect(
-                                    base_x + i * (self.tile_size // 3),
-                                    base_y + j * (self.tile_size // 3),
-                                    (self.tile_size // 3) - 1,
-                                    (self.tile_size // 3) - 1
-                                )
-                                # 砖墙使用深红色，钢墙使用深灰色
-                                color = (139, 0, 0) if tile_type == TERRAIN_TYPES["brick"] else (64, 64, 64)
-                                pygame.draw.rect(screen, color, block_rect)
+                    # 获取对应的地形贴图
+                    texture = None
+                    if tile_type == TERRAIN_TYPES["brick"]:
+                        texture = self.terrain_textures.get_texture("brick")
+                    elif tile_type == TERRAIN_TYPES["steel"]:
+                        texture = self.terrain_textures.get_texture("steel")
+                    elif tile_type == TERRAIN_TYPES["water"]:
+                        texture = self.terrain_textures.get_texture("water")
+                    elif tile_type == TERRAIN_TYPES["grass"]:
+                        texture = self.terrain_textures.get_texture("grass")
+                    
+                    if texture:
+                        # 计算贴图位置
+                        pos_x = x * self.tile_size
+                        pos_y = y * self.tile_size
+                        screen.blit(texture, (pos_x, pos_y))
     
     def get_map_data(self) -> List[List[int]]:
         """获取地图数据，用于AI"""
@@ -60,30 +60,23 @@ class MapGenerator:
         self.width = MAP_WIDTH
         self.height = MAP_HEIGHT
         self.tile_size = TILE_SIZE
-    
-    def generate_random_map(self) -> GameMap:
-        """生成随机地图"""
+
+    def generate_random_map(self, difficulty: float = 0.0) -> GameMap:
+        """生成随机地图，difficulty取值0~1，越大障碍越多"""
         game_map = GameMap(self.width, self.height, self.tile_size)
-        
-        # 生成随机地形
-        self._generate_terrain(game_map)
-        
-        # 确保地图中有安全区域（坦克生成点）
+        self._generate_terrain(game_map, difficulty)
         self._ensure_spawn_areas(game_map)
-        
         return game_map
-    
-    def _generate_terrain(self, game_map: GameMap):
-        """生成随机地形"""
-        # 随机生成砖墙
-        self._generate_terrain_type(game_map, TERRAIN_TYPES["brick"], 0.08)  # 8%的概率是砖墙
-        
-        # 随机生成钢墙
-        self._generate_terrain_type(game_map, TERRAIN_TYPES["steel"], 0.03)  # 3%的概率是钢墙
-        
-        # 生成一些障碍物集群
-        self._generate_obstacle_clusters(game_map)
-    
+
+    def _generate_terrain(self, game_map: GameMap, difficulty: float = 0.0):
+        """生成随机地形，难度越高障碍越多"""
+        # 增加障碍概率随难度线性变化
+        brick_prob = 0.03 + 0.10 * difficulty  # 0.03~0.13
+        steel_prob = 0.01 + 0.06 * difficulty  # 0.01~0.07
+        self._generate_terrain_type(game_map, TERRAIN_TYPES["brick"], brick_prob)
+        self._generate_terrain_type(game_map, TERRAIN_TYPES["steel"], steel_prob)
+        self._generate_obstacle_clusters(game_map, difficulty)
+
     def _generate_terrain_type(self, game_map: GameMap, terrain_type: int, probability: float):
         """生成指定类型的地形"""
         for x in range(game_map.width):
@@ -91,10 +84,11 @@ class MapGenerator:
                 if random.random() < probability and game_map.get_tile(x, y) == TERRAIN_TYPES["empty"]:
                     game_map.set_tile(x, y, terrain_type)
     
-    def _generate_obstacle_clusters(self, game_map: GameMap):
-        """生成障碍物集群"""
-        # 生成一些随机的障碍物集群 - 减少集群数量
-        num_clusters = random.randint(2, 4)  # 原来是3-7个集群
+    def _generate_obstacle_clusters(self, game_map: GameMap, difficulty: float = 0.0):
+        """生成障碍物集群，难度越高集群越多"""
+        min_clusters = 1 + int(2 * difficulty)  # 1~3
+        max_clusters = 3 + int(5 * difficulty)  # 3~8
+        num_clusters = random.randint(min_clusters, max_clusters)
         
         for _ in range(num_clusters):
             # 随机选择集群中心

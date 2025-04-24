@@ -75,19 +75,16 @@ class TankBattleEnv(gym.Env):
             random_seed = seed
         else:
             random_seed = np.random.randint(*RL_SETTINGS["random_seed_range"])
-        
-        # 重新创建游戏管理器
-        self.game_manager = GameManager(self.screen)
-        
-        # 重置步数
+        # 计算地图难度，随训练步数递增
+        if hasattr(self, 'current_step') and self.max_steps > 0:
+            difficulty = min(1.0, self.current_step / (self.max_steps * 0.8))  # 训练前80%线性递增，后期保持最大
+        else:
+            difficulty = 0.0
+        # 重新创建游戏管理器，传入难度
+        self.game_manager = GameManager(self.screen, map_difficulty=difficulty)
         self.current_step = 0
-        
-        # 获取初始观察
         observation = self._get_observation()
-        
-        # 保存当前游戏状态
         self.last_game_state = self.game_manager.game_state.copy()
-        
         return observation
     
     def step(self, action: int) -> Tuple[Dict, float, bool, Dict]:

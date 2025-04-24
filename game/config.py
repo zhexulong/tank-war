@@ -67,7 +67,7 @@ RL_SETTINGS = {
     "observation_radius": 5,   # 观察半径（格子数）
     
     # 训练设置
-    "max_steps": 1000,         # 每局最大步数
+    "max_steps": 5000,         # 每局最大步数
     "random_seed_range": (0, 10000)  # 随机种子范围
 }
 

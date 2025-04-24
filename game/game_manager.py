@@ -11,7 +11,7 @@ from data.collector import DataCollector
 class GameManager:
     """游戏管理器，负责管理游戏状态、实体和地图"""
     
-    def __init__(self, screen: pygame.Surface):
+    def __init__(self, screen: pygame.Surface, map_difficulty: float = 0.0):
         self.screen = screen
         self.clock = pygame.time.Clock()
         self.running = True
@@ -20,7 +20,7 @@ class GameManager:
         
         # 初始化地图生成器
         self.map_generator = MapGenerator()
-        self.current_map = self.map_generator.generate_random_map()
+        self.current_map = self.map_generator.generate_random_map(map_difficulty)
         
         # 初始化UI管理器
         self.ui_manager = UIManager(screen)
@@ -234,10 +234,10 @@ class GameManager:
         # 渲染UI
         self.ui_manager.render(self.game_state, self.tanks, self.game_over, self.winner)
     
-    def reset_game(self):
+    def reset_game(self, map_difficulty: float = 0.0):
         """重置游戏"""
         # 重新生成地图
-        self.current_map = self.map_generator.generate_random_map()
+        self.current_map = self.map_generator.generate_random_map(map_difficulty)
         
         # 重新生成坦克
         self.spawn_tanks()
