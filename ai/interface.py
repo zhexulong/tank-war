@@ -16,23 +16,34 @@ class AIInterface:
         self.agents = {}  # 存储AI智能体 {player_id: agent}
         self.observation_cache = {}  # 缓存观察结果
     
-    def load_agent(self, player_id: int, agent_path: str):
-        """加载预训练的智能体"""
-        # 获取状态和动作空间
-        from ai.environment import TankBattleEnv
-        env = TankBattleEnv()
-        state_shape = {
-            'map': env.observation_space['map'].shape,
-            'tanks': env.observation_space['tanks'].shape,
-            'bullets': env.observation_space['bullets'].shape
-        }
-        action_dim = env.action_space.n
+    def load_agent(self, player_id: int, agent_path: str = None, agent_type: str = 'dqn'):
+        """加载智能体
         
-        # 创建智能体
-        agent = DQNAgent(state_shape, action_dim)
-        
-        # 加载预训练模型
-        agent.load(agent_path)
+        Args:
+            player_id: 玩家ID
+            agent_path: 预训练模型路径（仅DQN需要）
+            agent_type: 智能体类型，'dqn'或'logic'
+        """
+        if agent_type == 'logic':
+            from ai.logic_agent import LogicAgent
+            agent = LogicAgent()
+        else:  # dqn
+            # 获取状态和动作空间
+            from ai.environment import TankBattleEnv
+            env = TankBattleEnv()
+            state_shape = {
+                'map': env.observation_space['map'].shape,
+                'tanks': env.observation_space['tanks'].shape,
+                'bullets': env.observation_space['bullets'].shape
+            }
+            action_dim = env.action_space.n
+            
+            # 创建智能体
+            agent = DQNAgent(state_shape, action_dim)
+            
+            # 加载预训练模型
+            if agent_path:
+                agent.load(agent_path)
         
         # 存储智能体
         self.agents[player_id] = agent
@@ -159,13 +170,28 @@ class AIInterface:
             # 获取观察
             observation = self.get_observation(player_id)
             if observation is None:
+                print(f"警告: 坦克 {player_id} 的观察数据为空")
                 continue
             
+            print(f"\n坦克 {player_id} 的观察数据:")
+            print(f"- 坦克数据: {observation['tanks']}")
+            print(f"- 地图数据形状: {observation['map'].shape}")
+            print(f"- 子弹数量: {len([b for b in observation['bullets'] if any(b)])}")
+            
             # 选择动作
-            action = agent.select_action(observation, epsilon=0.05)  # 使用较小的探索率
+            action = agent.select_action(observation, epsilon=0.05)
+            print(f"- 选择的动作: {action}")
             
             # 执行动作
             self.take_action(player_id, action)
+            
+            # 获取坦克当前状态
+            tank = self.game_manager.get_player_tank(player_id)
+            if tank:
+                print(f"- 坦克状态: 前进={tank.moving_forward}, 后退={tank.moving_backward}, " 
+                      f"左转={tank.rotating_left}, 右转={tank.rotating_right}, "
+                      f"炮塔左转={tank.rotating_turret_left}, 炮塔右转={tank.rotating_turret_right}, "
+                      f"开火={tank.firing}")
     
     def run_ai_vs_ai_game(self, agent1_path: str, agent2_path: str, render: bool = True) -> int:
         """运行AI对战游戏"""

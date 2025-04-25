@@ -160,31 +160,40 @@ class Tank:
         
         if self.moving_forward:
             # 根据坦克朝向计算前进方向
-            move_x = math.cos(math.radians(self.direction)) * self.speed
-            move_y = math.sin(math.radians(self.direction)) * self.speed
+            speed = max(0.8, self.speed)  # 提高最小前进速度
+            move_x = math.cos(math.radians(self.direction)) * speed
+            move_y = math.sin(math.radians(self.direction)) * speed
         
         if self.moving_backward:
             # 根据坦克朝向计算后退方向
-            move_x = -math.cos(math.radians(self.direction)) * (self.speed / 2)  # 后退速度减半
-            move_y = -math.sin(math.radians(self.direction)) * (self.speed / 2)
+            speed = max(0.6, self.speed * 0.75)  # 提高最小后退速度并增加后退速度系数
+            move_x = -math.cos(math.radians(self.direction)) * speed
+            move_y = -math.sin(math.radians(self.direction)) * speed
         
         # 计算新位置
         new_x = self.position[0] + move_x
         new_y = self.position[1] + move_y
         
-        # 检查边界碰撞
-        if 0 <= new_x <= SCREEN_WIDTH - self.size[0] and 0 <= new_y <= SCREEN_HEIGHT - self.size[1]:
-            # 检查地形碰撞
-            if self.check_terrain_collision(game_map, (new_x, new_y)):
-                # 更新位置，确保坐标为整数以避免精度问题
-                self.position = (int(new_x), int(new_y))
+        # 检查边界碰撞和地形碰撞
+        if (0 <= new_x <= SCREEN_WIDTH - self.size[0] and 
+            0 <= new_y <= SCREEN_HEIGHT - self.size[1] and
+            self.check_terrain_collision(game_map, (new_x, new_y))):
+            # 更新位置，使用round避免浮点数精度问题
+            self.position = (round(new_x), round(new_y))
+        else:
+            # 如果发生碰撞，尝试单轴移动
+            if 0 <= new_x <= SCREEN_WIDTH - self.size[0] and self.check_terrain_collision(game_map, (new_x, self.position[1])):
+                self.position = (round(new_x), self.position[1])
+            if 0 <= new_y <= SCREEN_HEIGHT - self.size[1] and self.check_terrain_collision(game_map, (self.position[0], new_y)):
+                self.position = (self.position[0], round(new_y))
         
-        # 更新旋转 - 增加旋转速度以提高响应性
+        # 更新旋转
+        rotation_speed = 3  # 固定旋转速度
         if self.rotating_left:
-            self.direction = (self.direction - 3) % 360
+            self.direction = (self.direction - rotation_speed) % 360
         
         if self.rotating_right:
-            self.direction = (self.direction + 3) % 360
+            self.direction = (self.direction + rotation_speed) % 360
     
     def update_turret_rotation(self):
         """更新炮塔旋转"""

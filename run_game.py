@@ -19,10 +19,14 @@ def main():
     # 解析命令行参数
     parser = argparse.ArgumentParser(description='坦克世界大战游戏')
     parser.add_argument('--mode', type=str, default='human_vs_ai',
-                        choices=['human_vs_human', 'human_vs_ai', 'ai_vs_ai', 'train'],
+                        choices=['human_vs_human', 'human_vs_ai', 'ai_vs_ai', 
+                                'logic_ai_vs_human', 'logic_ai_vs_ai', 'train'],
                         help='游戏模式')
     parser.add_argument('--agent', type=str, default=None,
                         help='AI智能体模型路径')
+    parser.add_argument('--ai_type', type=str, default='dqn',
+                        choices=['dqn', 'logic'],
+                        help='AI类型：dqn或logic')
     parser.add_argument('--episodes', type=int, default=1000,
                         help='训练回合数')
     parser.add_argument('--render', action='store_true',
@@ -38,12 +42,22 @@ def main():
     elif args.mode == 'human_vs_ai':
         # 人类玩家vs AI模式
         from main import main as start_game
-        start_game(ai_opponent=True, ai_model_path=args.agent)
+        start_game(ai_opponent=True, ai_model_path=args.agent, ai_type=args.ai_type)
     
     elif args.mode == 'ai_vs_ai':
         # AI对战模式
         from ai.training import evaluate_agent
-        evaluate_agent(args.agent, episodes=10, render=True)
+        evaluate_agent(args.agent, episodes=10, render=True, ai_type=args.ai_type)
+    
+    elif args.mode == 'logic_ai_vs_human':
+        # 逻辑AI vs 人类模式
+        from main import main as start_game
+        start_game(ai_opponent=True, ai_type='logic')
+    
+    elif args.mode == 'logic_ai_vs_ai':
+        # 逻辑AI对战模式
+        from main import main as start_game
+        start_game(ai_opponent=True, ai_type='logic', second_ai_type='logic')
     
     elif args.mode == 'train':
         # AI训练模式
