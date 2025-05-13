@@ -18,6 +18,9 @@ import argparse
 def main():
     # 解析命令行参数
     parser = argparse.ArgumentParser(description='坦克世界大战游戏')
+    parser.add_argument('--game_type', type=str, default='normal',
+                        choices=['normal', 'simplified'],
+                        help='游戏类型：普通版或简化版')
     parser.add_argument('--mode', type=str, default='human_vs_ai',
                         choices=['human_vs_human', 'human_vs_ai', 'ai_vs_ai', 
                                 'logic_ai_vs_human', 'logic_ai_vs_ai', 'train'],
@@ -33,7 +36,25 @@ def main():
                         help='是否渲染游戏画面')
     args = parser.parse_args()
     
-    # 根据模式启动游戏
+    # 根据游戏类型选择启动不同版本
+    if args.game_type == 'simplified':
+        from game_simplified.game import main as start_simplified_game
+        if args.mode == 'human_vs_human':
+            start_simplified_game()
+        elif args.mode == 'human_vs_ai':
+            start_simplified_game(ai_opponent=True, ai_type=args.ai_type)
+        elif args.mode == 'ai_vs_ai':
+            start_simplified_game(ai_opponent=True, ai_type=args.ai_type, second_ai_type=args.ai_type)
+        elif args.mode == 'logic_ai_vs_human':
+            start_simplified_game(ai_opponent=True, ai_type='logic')
+        elif args.mode == 'logic_ai_vs_ai':
+            start_simplified_game(ai_opponent=True, ai_type='logic', second_ai_type='logic')
+        elif args.mode == 'train':
+            from ai.training import train_single_agent
+            train_single_agent(episodes=args.episodes, render=args.render, simplified=True)
+        return
+    
+    # 普通版游戏模式
     if args.mode == 'human_vs_human':
         # 人类玩家对战模式
         from main import main as start_game

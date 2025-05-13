@@ -68,3 +68,8 @@ python run_game.py --render --mode human_vs_human
 ```bash
 python run_game.py --mode train
 ```
+
+- simplified:
+```bash
+python run_game.py --game_type simplified --mode logic_ai_vs_human
+```
