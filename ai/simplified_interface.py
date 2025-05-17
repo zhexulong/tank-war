@@ -1,11 +1,12 @@
 import numpy as np
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 from ai.logic_agent import LogicAgent
+
 class SimplifiedAIInterface:
     """简化版游戏的AI接口"""
     
     def __init__(self, game_manager, game_core):
-        self.game_manager = game_manager
+        self.game_manager = game_manager  # 确保传入 game_manager
         self.game_core = game_core
         self.agents = {}  # 存储AI智能体 {player_id: agent}
         self.observation_cache = {}  # 缓存观察结果
@@ -19,8 +20,8 @@ class SimplifiedAIInterface:
             agent_type: 智能体类型，'dqn'或'logic'
         """
         if agent_type == 'logic':
-            from ai.logic_agent import LogicAgent
-            agent = LogicAgent()
+            # 在创建 LogicAgent 时传入 game_manager
+            agent = LogicAgent(self.game_manager)
         else:  # dqn
             from ai.agent import DQNAgent
             
@@ -58,7 +59,7 @@ class SimplifiedAIInterface:
         self.observation_cache[player_id] = observation
         
         return observation
-    
+
     def _build_observation(self, game_state: Dict, tank) -> Dict:
         """构建简化版的观察空间"""
         # 观察范围 (7x7)
@@ -120,13 +121,8 @@ class SimplifiedAIInterface:
         """更新所有AI控制的坦克"""
         # 更新每个AI控制的坦克
         for player_id, agent in self.agents.items():
-            if player_id == 1:
-                tank = self.game_manager.tanks[0]
-            else:
-                tank = self.game_manager.tanks[1]
-                
+            tank = self.game_manager.get_player_tank(player_id)
             if not tank.is_player:  # 如果是AI控制的坦克
-                print(tank)
                 # 获取观察
                 observation = self.get_observation(player_id)
                 if observation is None:
@@ -137,37 +133,72 @@ class SimplifiedAIInterface:
                     action = agent.select_action(observation)
                 else:
                     action = agent.get_action(observation)
-                    
                 
                 # 执行动作
                 self._execute_action(tank, action)
     
     def _execute_action(self, tank, action):
         """执行AI的动作"""
-        print("_execute_action")
         if action == 0:  # 不动
             pass
         elif action == 1:  # 向前移动
-            new_pos = tank.position.copy()
-            if tank.direction == 1:
-                new_pos[0]=new_pos[0]+1
-            elif tank.direction == 2:
-                new_pos[1]=new_pos[1]-1
-            elif tank.direction == 3:
-                new_pos[0]=new_pos[0]-1
-            elif tank.direction == 4:
-                new_pos[1]=new_pos[1]+1
-                
-            if (new_pos[0], new_pos[1]) not in self.game_manager.current_map.obstacles:
+            # 检查前方是否有障碍物
+            if self._is_blocked({'tanks': [tank]}):
+                print("前方有障碍物，开火！")
+                self._fire(tank)  # 如果前方被挡住，开火
+            else:
+                new_pos = tank.position.copy()
+                if tank.direction == 0:  # 上
+                    new_pos[1] = max(0, new_pos[1] - 1)
+                elif tank.direction == 1:  # 右
+                    new_pos[0] = min(self.MAP_SIZE - 1, new_pos[0] + 1)
+                elif tank.direction == 2:  # 下
+                    new_pos[1] = min(self.MAP_SIZE - 1, new_pos[1] + 1)
+                elif tank.direction == 3:  # 左
+                    new_pos[0] = max(0, new_pos[0] - 1)
+                # if (new_pos[0], new_pos[1]) not in self.current_map.obstacles:
                 tank.update_position(new_pos)
+                
         elif action == 2:  # 旋转（逆时针）
             tank.update_direction((tank.direction - 1) % 4)
         elif action == 3:  # 旋转（顺时针）
             tank.update_direction((tank.direction + 1) % 4)
         elif action == 4:  # 开火
-            self.game_manager.bullets.append([
-                tank.position[0],
-                tank.position[1],
-                tank.direction,
-                tank.player_id
-            ])
+            self._fire(tank)  # 开火
+        
+    def _fire(self, tank):
+        """执行开火动作"""
+        print(f"坦克 {tank.player_id} 在位置 {tank.position} 发射子弹！")
+        self.game_manager.bullets.append([
+            tank.position[0],
+            tank.position[1],
+            tank.direction,
+            tank.player_id
+        ])
+        
+    def _is_blocked(self, state: Dict) -> bool:
+        """判断前方是否有障碍物"""
+        # import math
+        # tank_data = state['tanks']
+        # current_x, current_y, current_angle = tank_data[0], tank_data[1], tank_data[2] * 360  # 获取当前坦克位置和朝向
+        
+        # # 计算坦克前方一小步的坐标
+        # step_length = 1  # 步长
+        # angle_rad = math.radians(current_angle)  # 转为弧度
+        
+        # dx = step_length * math.cos(angle_rad)
+        # dy = step_length * math.sin(angle_rad)
+        
+        # target_x = current_x + dx
+        # target_y = current_y + dy
+        
+        # # 获取障碍物集合
+        # obstacles = self.game_manager.current_map.obstacles  # 获取障碍物的集合
+        
+        # target_x_int = int(target_x)  # 确保是整数索引
+        # target_y_int = int(target_y)  # 确保是整数索引
+        
+        # # 检查前方目标位置是否有障碍物
+        # if (target_x_int, target_y_int) in obstacles:
+        #     return True
+        return False
