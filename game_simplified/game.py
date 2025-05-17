@@ -129,6 +129,7 @@ class SimplifiedGame:
         print(f"正在初始化AI - 类型: {self.ai_type}")
         # 初始化AI（玩家2）
         self.ai_interface.load_agent(2, None, self.ai_type)
+        self.tanks[1].is_player = False
         
         # 如果是AI对战模式
         if self.second_ai_type:

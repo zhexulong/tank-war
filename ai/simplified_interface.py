@@ -1,6 +1,6 @@
 import numpy as np
 from typing import Dict, List, Tuple, Optional
-
+from ai.logic_agent import LogicAgent
 class SimplifiedAIInterface:
     """简化版游戏的AI接口"""
     
@@ -126,6 +126,7 @@ class SimplifiedAIInterface:
                 tank = self.game_manager.tanks[1]
                 
             if not tank.is_player:  # 如果是AI控制的坦克
+                print(tank)
                 # 获取观察
                 observation = self.get_observation(player_id)
                 if observation is None:
@@ -133,42 +134,37 @@ class SimplifiedAIInterface:
                 
                 # 获取动作
                 if isinstance(agent, LogicAgent):
-                    action = agent.get_action(observation)
-                else:
                     action = agent.select_action(observation)
+                else:
+                    action = agent.get_action(observation)
+                    
                 
                 # 执行动作
                 self._execute_action(tank, action)
     
     def _execute_action(self, tank, action):
         """执行AI的动作"""
-        if action == 0:  # 向上移动
+        print("_execute_action")
+        if action == 0:  # 不动
+            pass
+        elif action == 1:  # 向前移动
             new_pos = tank.position.copy()
-            new_pos[1] = max(0, new_pos[1] - 1)
+            if tank.direction == 1:
+                new_pos[0]=new_pos[0]+1
+            elif tank.direction == 2:
+                new_pos[1]=new_pos[1]-1
+            elif tank.direction == 3:
+                new_pos[0]=new_pos[0]-1
+            elif tank.direction == 4:
+                new_pos[1]=new_pos[1]+1
+                
             if (new_pos[0], new_pos[1]) not in self.game_manager.current_map.obstacles:
                 tank.update_position(new_pos)
-                tank.update_direction(0)
-        elif action == 1:  # 向右移动
-            new_pos = tank.position.copy()
-            new_pos[0] = min(self.game_manager.MAP_SIZE - 1, new_pos[0] + 1)
-            if (new_pos[0], new_pos[1]) not in self.game_manager.current_map.obstacles:
-                tank.update_position(new_pos)
-                tank.update_direction(1)
-        elif action == 2:  # 向下移动
-            new_pos = tank.position.copy()
-            new_pos[1] = min(self.game_manager.MAP_SIZE - 1, new_pos[1] + 1)
-            if (new_pos[0], new_pos[1]) not in self.game_manager.current_map.obstacles:
-                tank.update_position(new_pos)
-                tank.update_direction(2)
-        elif action == 3:  # 向左移动
-            new_pos = tank.position.copy()
-            new_pos[0] = max(0, new_pos[0] - 1)
-            if (new_pos[0], new_pos[1]) not in self.game_manager.current_map.obstacles:
-                tank.update_position(new_pos)
-                tank.update_direction(3)
-        elif action == 4:  # 旋转（顺时针）
+        elif action == 2:  # 旋转（逆时针）
+            tank.update_direction((tank.direction - 1) % 4)
+        elif action == 3:  # 旋转（顺时针）
             tank.update_direction((tank.direction + 1) % 4)
-        elif action == 5:  # 开火
+        elif action == 4:  # 开火
             self.game_manager.bullets.append([
                 tank.position[0],
                 tank.position[1],

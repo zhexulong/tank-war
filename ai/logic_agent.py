@@ -25,10 +25,11 @@ class LogicAgent:
             print("\nLogicAgent决策过程:")
             print("1. 当前状态:")
             tank_data = state['tanks']
+            print(tank_data)
             print(f"- 自身位置: ({tank_data[0]:.2f}, {tank_data[1]:.2f})")
             print(f"- 自身朝向: {tank_data[2] * 360:.1f}度")
-            print(f"- 炮塔朝向: {tank_data[3] * 360:.1f}度")
-            print(f"- 敌人位置: ({tank_data[7]:.2f}, {tank_data[8]:.2f})")
+            print(f"- 敌人位置: ({tank_data[3]:.2f}, {tank_data[4]:.2f})")
+            print(f"- 敌人朝向: {tank_data[5] * 360:.1f}度")
         
         # 创建求解器
         self.solver = Solver()
@@ -70,7 +71,7 @@ class LogicAgent:
             if self.debug:
                 print("- 求解失败，使用随机动作")
             # 在无解情况下随机选择动作
-            action = np.random.randint(0, 8)
+            action = np.random.randint(0, 5)
             print(f"- 随机选择动作: {self._action_to_str(action)}")
         
         if self.debug:
@@ -107,22 +108,21 @@ class LogicAgent:
         tank_data = state['tanks']
         
         # 计算与敌人的距离和角度
-        dx = tank_data[7] - tank_data[0]  # 敌人x - 自己x
-        dy = tank_data[8] - tank_data[1]  # 敌人y - 自己y
+        dx = tank_data[3] - tank_data[0]  # 敌人x - 自己x
+        dy = tank_data[4] - tank_data[1]  # 敌人y - 自己y
         distance = np.sqrt(dx*dx + dy*dy)
         target_angle = np.arctan2(dy, dx) * 180 / np.pi
         if target_angle < 0:
             target_angle += 360
             
         current_angle = tank_data[2] * 360  # 当前朝向
-        turret_angle = tank_data[3] * 360   # 炮塔朝向
+        turret_angle = tank_data[2] * 360   # 炮塔朝向
         
         # 计算需要转向的角度
         angle_diff = (target_angle - current_angle) % 360
-        turret_diff = (target_angle - turret_angle) % 360
         
         # 根据距离决定行为
-        if distance > 0.4:  # 如果距离较远，追击
+        if distance > 0.2:  # 如果距离较远，追击
             if abs(angle_diff) > 20 and abs(angle_diff - 360) > 20:
                 # 需要转向
                 if angle_diff < 180:
@@ -132,15 +132,8 @@ class LogicAgent:
             else:
                 # 角度合适，前进
                 clauses.append([self._action_to_var("forward")])
-        elif distance < 0.2:  # 如果距离太近，后退
-            clauses.append([self._action_to_var("backward")])
         
         # 调整炮塔朝向
-        if abs(turret_diff) > 10 and abs(turret_diff - 360) > 10:
-            if turret_diff < 180:
-                clauses.append([self._action_to_var("turret_right")])
-            else:
-                clauses.append([self._action_to_var("turret_left")])
         
         return clauses
     
@@ -150,14 +143,13 @@ class LogicAgent:
         tank_data = state['tanks']
         
         # 计算炮塔与敌人的角度差
-        dx = tank_data[7] - tank_data[0]
-        dy = tank_data[8] - tank_data[1]
+        dx = tank_data[3] - tank_data[0]
+        dy = tank_data[4] - tank_data[1]
         target_angle = np.arctan2(dy, dx) * 180 / np.pi
         if target_angle < 0:
             target_angle += 360
             
-        turret_angle = tank_data[3] * 360
-        angle_diff = (target_angle - turret_angle) % 360
+        angle_diff = (target_angle - tank_data[5]) % 360
         
         # 如果炮塔朝向接近目标，开火
         if abs(angle_diff) < 10 or abs(angle_diff - 360) < 10:
@@ -180,12 +172,9 @@ class LogicAgent:
         action_map = {
             "stay": 0,
             "forward": 1,
-            "backward": 2,
-            "turn_left": 3,
-            "turn_right": 4,
-            "turret_left": 5,
-            "turret_right": 6,
-            "fire": 7
+            "turn_left": 2,
+            "turn_right": 3,
+            "fire": 4
         }
         
         for action, var in self.vars.items():
@@ -195,6 +184,6 @@ class LogicAgent:
     
     def _action_to_str(self, action: int) -> str:
         """动作ID转字符串"""
-        action_strs = ["stay", "forward", "backward", "turn_left", "turn_right",
-                      "turret_left", "turret_right", "fire"]
+        action_strs = ["stay", "forward",  "turn_left", "turn_right",
+                       "fire"]
         return action_strs[action]
