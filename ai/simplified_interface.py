@@ -92,8 +92,8 @@ class SimplifiedAIInterface:
         tanks_data = np.zeros(6, dtype=np.float32)
         
         # 当前坦克位置和方向
-        tanks_data[0] = tank_x / map_size  # x位置归一化
-        tanks_data[1] = tank_y / map_size  # y位置归一化
+        tanks_data[0] = tank_x   # x位置归一化
+        tanks_data[1] = tank_y   # y位置归一化
         tanks_data[2] = tank.direction / 4.0  # 方向归一化 (4个方向)
         
         # 获取对手坦克
@@ -106,8 +106,8 @@ class SimplifiedAIInterface:
         
         if opponent:
             # 对手坦克位置和方向
-            tanks_data[3] = opponent['position'][0] / map_size
-            tanks_data[4] = opponent['position'][1] / map_size
+            tanks_data[3] = opponent['position'][0] 
+            tanks_data[4] = opponent['position'][1] 
             tanks_data[5] = opponent['direction'] / 4.0
         
         return {

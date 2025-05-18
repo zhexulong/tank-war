@@ -1,7 +1,6 @@
 import numpy as np
 from typing import Dict, List
-from z3 import Solver, Or, Bool, sat, Not
-import math
+from z3 import Solver, Or, Bool, sat
 
 class LogicAgent:
     """基于逻辑规划的AI智能体"""
@@ -41,16 +40,13 @@ class LogicAgent:
         clauses = []
         
         # 基本约束：每次只能执行一个动作
-        clauses.extend(self._build_basic_clauses())
         
         # 追踪敌人约束
-        clauses.extend(self._build_chase_clauses(state))
-        
-        # # 攻击约束
-        # clauses.extend(self._build_attack_clauses(state))
-        
-        # # 道路清除约束
-        # clauses.extend(self._build_clear_path_clauses(state))
+        next_action= self._build_chase_clauses(state)
+        if next_action==[[self._action_to_var("forward")]] and self._is_blocked(state):
+            clauses.extend([self._action_to_var("fire")])
+        else:
+            clauses.extend(next_action)
         
         # 添加所有约束到求解器
         if self.debug:
@@ -95,14 +91,6 @@ class LogicAgent:
             self.vars[action] = var
             self.action_vars.append(var)
     
-    def _build_basic_clauses(self) -> List:
-        """构建基本约束：每次只能执行一个动作"""
-        clauses = []
-        
-        # 确保只能选择一个动作
-        clauses.append(Or(self.action_vars))  # 选择一个动作
-        
-        return clauses
     
     def _build_chase_clauses(self, state: Dict) -> List:
         """构建追踪敌人的约束"""
@@ -191,62 +179,28 @@ class LogicAgent:
         
         
         return clauses
-    
-    def _build_attack_clauses(self, state: Dict) -> List:
-        """构建攻击约束"""
-        clauses = []
-        tank_data = state['tanks']
-        
-        # 计算炮塔与敌人的角度差
-        dx = tank_data[3] - tank_data[0]
-        dy = tank_data[4] - tank_data[1]
-        target_angle = np.arctan2(dy, dx) * 180 / np.pi
-        if target_angle < 0:
-            target_angle += 360
-            
-        angle_diff = (target_angle - tank_data[5]) % 360
-        
-        # 如果炮塔朝向接近目标，开火
-        if abs(angle_diff) < 10:  # 向敌人射击
-            clauses.append([self._action_to_var("fire")])
-        
-        return clauses
-
-    def _build_clear_path_clauses(self, state: Dict) -> List:
-        """构建清除障碍物的约束"""
-        clauses = []
-        tank_data = state['tanks']
-        
-        # 假设障碍物是可以被射击的，检查前方是否有障碍物
-        if self._is_blocked(state):  # 假设存在前方阻挡
-            clauses.append([self._action_to_var("fire")])  # 射击前方
-        
-        return clauses
+   
 
     def _is_blocked(self, state: Dict) -> bool:
         """判断前方是否有障碍物"""
-        import math
         tank_data = state['tanks']
-        current_x, current_y, current_angle = tank_data[0], tank_data[1], tank_data[2] * 360  # 获取当前坦克位置和朝向
+        current_x, current_y, current_angle = tank_data[0], tank_data[1], tank_data[2] * 4  # 获取当前坦克位置和朝向
         
-        # 计算坦克前方一小步的坐标
-        step_length = 1  # 步长
-        angle_rad = math.radians(current_angle)  # 转为弧度
-        
-        dx = step_length * math.cos(angle_rad)
-        dy = step_length * math.sin(angle_rad)
-        
-        target_x = current_x + dx
-        target_y = current_y + dy
-        
+        target_x = current_x 
+        target_y = current_y 
+        if current_angle==0:
+            target_y=target_y-1
+        elif current_angle==1:
+            target_x=target_x+1
+        elif current_angle==2:
+            target_y=target_y+1
+        elif current_angle==3:
+            target_x=target_x-1
         # 获取障碍物集合
         obstacles = self.game_manager.current_map.obstacles  # 获取障碍物的集合
-        
-        target_x_int = int(target_x)  # 确保是整数索引
-        target_y_int = int(target_y)  # 确保是整数索引
-        
+        print(obstacles)
         # 检查前方目标位置是否有障碍物
-        if (target_x_int, target_y_int) in obstacles:
+        if (target_x, target_y) in obstacles:
             return True
         return False
     
