@@ -39,7 +39,8 @@ class LogicAgent:
         # 构建约束条件
         clauses = []
         
-        # 基本约束：每次只能执行一个动作
+        # 躲避子弹约束
+        # self._build_dodge_clauses(state)
         
         # 追踪敌人约束
         next_action= self._build_chase_clauses(state)
@@ -91,7 +92,15 @@ class LogicAgent:
             self.vars[action] = var
             self.action_vars.append(var)
     
-    
+    # def _build_dodge_clauses(state: Dict) -> List:
+    #     clauses = []
+    #     #判断是否有敌方子弹
+    #     bullets=state['bullets']
+    #     for bullet in bullet:
+    #         #写死敌方id
+    #         if bullet[2]==1:
+                #如果在直线上并且只有两格了
+                
     def _build_chase_clauses(self, state: Dict) -> List:
         """构建追踪敌人的约束"""
         clauses = []

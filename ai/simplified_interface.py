@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Dict, List, Tuple
+from typing import Dict
 from ai.logic_agent import LogicAgent
 
 class SimplifiedAIInterface:
@@ -110,16 +110,19 @@ class SimplifiedAIInterface:
             tanks_data[4] = opponent['position'][1] 
             tanks_data[5] = opponent['direction'] / 4.0
         
+        #添加子弹信息
+        bullets_data=game_state['bullets']
+        # print(f'bullets_data{bullets_data}')
         return {
             'map': map_data,
             'tanks': tanks_data,
             'game_over': game_state['game_over'],
-            'winner': game_state['winner']
+            'winner': game_state['winner'],
+            'bullets':bullets_data
         }
     
     def update_ai_controlled_tanks(self):
         """更新所有AI控制的坦克"""
-        # 更新每个AI控制的坦克
         for player_id, agent in self.agents.items():
             tank = self.game_manager.get_player_tank(player_id)
             if not tank.is_player:  # 如果是AI控制的坦克
@@ -143,22 +146,16 @@ class SimplifiedAIInterface:
             pass
         elif action == 1:  # 向前移动
             # 检查前方是否有障碍物
-            if self._is_blocked({'tanks': [tank]}):
-                print("前方有障碍物，开火！")
-                self._fire(tank)  # 如果前方被挡住，开火
-            else:
-                new_pos = tank.position.copy()
-                if tank.direction == 0:  # 上
-                    new_pos[1] = max(0, new_pos[1] - 1)
-                elif tank.direction == 1:  # 右
-                    new_pos[0] = min(self.MAP_SIZE - 1, new_pos[0] + 1)
-                elif tank.direction == 2:  # 下
-                    new_pos[1] = min(self.MAP_SIZE - 1, new_pos[1] + 1)
-                elif tank.direction == 3:  # 左
-                    new_pos[0] = max(0, new_pos[0] - 1)
-                # if (new_pos[0], new_pos[1]) not in self.current_map.obstacles:
-                tank.update_position(new_pos)
-                
+            new_pos = tank.position.copy()
+            if tank.direction == 0:  # 上
+                new_pos[1] = max(0, new_pos[1] - 1)
+            elif tank.direction == 1:  # 右
+                new_pos[0] = min(self.game_manager.MAP_SIZE - 1, new_pos[0] + 1)
+            elif tank.direction == 2:  # 下
+                new_pos[1] = min(self.game_manager.MAP_SIZE - 1, new_pos[1] + 1)
+            elif tank.direction == 3:  # 左
+                new_pos[0] = max(0, new_pos[0] - 1)
+            tank.update_position(new_pos)
         elif action == 2:  # 旋转（逆时针）
             tank.update_direction((tank.direction - 1) % 4)
         elif action == 3:  # 旋转（顺时针）
@@ -176,29 +173,3 @@ class SimplifiedAIInterface:
             tank.player_id
         ])
         
-    def _is_blocked(self, state: Dict) -> bool:
-        """判断前方是否有障碍物"""
-        # import math
-        # tank_data = state['tanks']
-        # current_x, current_y, current_angle = tank_data[0], tank_data[1], tank_data[2] * 360  # 获取当前坦克位置和朝向
-        
-        # # 计算坦克前方一小步的坐标
-        # step_length = 1  # 步长
-        # angle_rad = math.radians(current_angle)  # 转为弧度
-        
-        # dx = step_length * math.cos(angle_rad)
-        # dy = step_length * math.sin(angle_rad)
-        
-        # target_x = current_x + dx
-        # target_y = current_y + dy
-        
-        # # 获取障碍物集合
-        # obstacles = self.game_manager.current_map.obstacles  # 获取障碍物的集合
-        
-        # target_x_int = int(target_x)  # 确保是整数索引
-        # target_y_int = int(target_y)  # 确保是整数索引
-        
-        # # 检查前方目标位置是否有障碍物
-        # if (target_x_int, target_y_int) in obstacles:
-        #     return True
-        return False
