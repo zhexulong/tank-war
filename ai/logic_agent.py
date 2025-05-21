@@ -2,34 +2,37 @@ import numpy as np
 from typing import Dict, List
 from z3 import Solver, Or, Bool, sat
 
-class LogicAgent:
+from ai.base_agent import BaseAgent
+
+class LogicAgent(BaseAgent):
     """基于逻辑规划的AI智能体"""
     
-    def __init__(self, game_manager):
-        self.game_manager = game_manager  # 确保传入 game_manager
+    def __init__(self):
         self.debug = True
         self.solver = None
         self.vars = {}
         self.action_vars = []
         
-    def select_action(self, state: Dict, epsilon: float = 0.0) -> int:
+    def select_action(self, state: Dict) -> int:
         """选择动作
         
         Args:
-            state: 游戏状态
-            epsilon: 随机探索概率（未使用）        
+            state: 游戏状态字典，包含 'map'、'tanks' 和 'bullets' 等信息
         Returns:
-            action: 选择的动作（0-7）
+            action: 选择的动作（0-4，分别表示 stay、forward、turn_left、turn_right、fire）
         """
         if self.debug:
             print("\nLogicAgent决策过程:")
             print("1. 当前状态:")
-            tank_data = state['tanks']
-            print(tank_data)
-            print(f"- 自身位置: ({tank_data[0]:.2f}, {tank_data[1]:.2f})")
-            print(f"- 自身朝向: {tank_data[2] * 360:.1f}度")
-            print(f"- 敌人位置: ({tank_data[3]:.2f}, {tank_data[4]:.2f})")
-            print(f"- 敌人朝向: {tank_data[5] * 360:.1f}度")
+            tanks = state['tanks']
+            print(tanks)
+            # 假设第一个坦克是AI控制的坦克（玩家2）
+            my_tank = tanks[1]  # player_id为2的坦克
+            enemy_tank = tanks[0]  # player_id为1的坦克
+            print(f"- 自身位置: ({my_tank['position'][0]:.2f}, {my_tank['position'][1]:.2f})")
+            print(f"- 自身朝向: {my_tank['direction'] * 90:.1f}度")
+            print(f"- 敌人位置: ({enemy_tank['position'][0]:.2f}, {enemy_tank['position'][1]:.2f})")
+            print(f"- 敌人朝向: {enemy_tank['direction'] * 90:.1f}度")
         
         # 创建求解器
         self.solver = Solver()
@@ -104,14 +107,16 @@ class LogicAgent:
     def _build_chase_clauses(self, state: Dict) -> List:
         """构建追踪敌人的约束"""
         clauses = []
-        tank_data = state['tanks']
+        tanks = state['tanks']
+        my_tank = tanks[1]  # player_id为2的坦克
+        enemy_tank = tanks[0]  # player_id为1的坦克
         
         # 计算与敌人的坐标差值
-        dx = tank_data[3] - tank_data[0]  # 敌人x - 自己x
-        dy = tank_data[4] - tank_data[1]  # 敌人 y - 自己 y
+        dx = enemy_tank['position'][0] - my_tank['position'][0]  # 敌人x - 自己x
+        dy = enemy_tank['position'][1] - my_tank['position'][1]  # 敌人y - 自己y
         
-        #检查自己当前朝向
-        tank_angle = tank_data[2]*4
+        # 检查自己当前朝向（0-上，1-右，2-下，3-左）
+        tank_angle = my_tank['direction']
         # 判断哪个坐标差值更小，选择那个轴进行移动
         if abs(dx) < abs(dy):
             # 走向同一竖线
@@ -161,9 +166,9 @@ class LogicAgent:
                     clauses.append([self._action_to_var("turn_right")])  # 向右转
             elif dy < 0:
                 # 需要朝上
-                if tank_data[2] == 1:  # 朝右
+                if tank_angle == 1:  # 朝右
                     clauses.append([self._action_to_var("turn_left")])  # 向左转
-                elif tank_data[2] == 0:  # 朝上
+                elif tank_angle == 0:  # 朝上
                     clauses.append([self._action_to_var("forward")])  # 向前
                 else:
                     clauses.append([self._action_to_var("turn_right")])  # 向右转
@@ -192,8 +197,10 @@ class LogicAgent:
 
     def _is_blocked(self, state: Dict) -> bool:
         """判断前方是否有障碍物"""
-        tank_data = state['tanks']
-        current_x, current_y, current_angle = tank_data[0], tank_data[1], tank_data[2] * 4  # 获取当前坦克位置和朝向
+        tanks = state['tanks']
+        my_tank = tanks[1]  # player_id为2的坦克
+        current_x, current_y = my_tank['position'][0], my_tank['position'][1]
+        current_angle = my_tank['direction']  # 获取当前坦克位置和朝向（0-上，1-右，2-下，3-左）
         
         target_x = current_x 
         target_y = current_y 
@@ -206,10 +213,11 @@ class LogicAgent:
         elif current_angle==3:
             target_x=target_x-1
         # 获取障碍物集合
-        obstacles = self.game_manager.current_map.obstacles  # 获取障碍物的集合
-        print(obstacles)
+        obstacles = state.get('obstacles', [])  # 从状态中获取障碍物列表
+        
         # 检查前方目标位置是否有障碍物
-        if (target_x, target_y) in obstacles:
+        target_pos = (target_x, target_y)
+        if target_pos in obstacles:
             return True
         return False
     

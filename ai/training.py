@@ -179,23 +179,33 @@ def train_multi_agent(episodes: int = 1000, save_interval: int = 100, render: bo
     
     return multi_agent
 
-def plot_training_curves(rewards: List[float], losses: List[float], win_rates: List[int], episode_lengths: List[int], episode: int):
-    """绘制训练曲线"""
+def plot_training_curves(
+    rewards: List[float], losses: List[float], win_rates: List[int], episode_lengths: List[int],
+    moving_avg_reward: List[float] = None, moving_avg_loss: List[float] = None, moving_avg_win_rate: List[float] = None,
+    episode: int = None
+):
+    """绘制训练曲线，包括原始数据和移动平均线"""
     plt.figure(figsize=(15, 10))
     
     # 绘制奖励曲线
     plt.subplot(2, 2, 1)
-    plt.plot(rewards)
+    plt.plot(rewards, alpha=0.5, label='Raw')
+    if moving_avg_reward:
+        plt.plot(range(len(rewards)-len(moving_avg_reward), len(rewards)), moving_avg_reward, 'r', label='Moving Average')
     plt.title('Episode Rewards')
     plt.xlabel('Episode')
     plt.ylabel('Reward')
+    plt.legend()
     
     # 绘制损失曲线
     plt.subplot(2, 2, 2)
-    plt.plot(losses)
+    plt.plot(losses, alpha=0.5, label='Raw')
+    if moving_avg_loss:
+        plt.plot(range(len(losses)-len(moving_avg_loss), len(losses)), moving_avg_loss, 'r', label='Moving Average')
     plt.title('Average Loss per Episode')
     plt.xlabel('Episode')
     plt.ylabel('Loss')
+    plt.legend()
     
     # 绘制胜率曲线
     plt.subplot(2, 2, 3)

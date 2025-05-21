@@ -87,13 +87,24 @@ class TankBattleEnv(gym.Env):
         self.last_game_state = self.game_manager.game_state.copy()
         return observation
     
-    def step(self, action: int) -> Tuple[Dict, float, bool, Dict]:
-        """执行一步动作"""
+    def step(self, action: List[int]) -> Tuple[Dict, List[float], bool, Dict]:
+        """执行一步动作
+        
+        Args:
+            action: 包含两个智能体动作的列表 [rl_action, logic_action]
+            
+        Returns:
+            observation: 观察状态
+            rewards: 包含两个智能体奖励的列表 [rl_reward, logic_reward]
+            done: 是否结束
+            info: 额外信息
+        """
         # 增加步数
         self.current_step += 1
         
-        # 执行动作
-        self._execute_action(action)
+        # 执行两个智能体的动作
+        self._execute_action(action[0], player_id=0)  # RL智能体
+        self._execute_action(action[1], player_id=1)  # Logic智能体
         
         # 更新游戏状态
         self.game_manager.update()
@@ -102,7 +113,9 @@ class TankBattleEnv(gym.Env):
         observation = self._get_observation()
         
         # 计算奖励
-        reward = self._calculate_reward()
+        rl_reward = self._calculate_reward(player_id=0)
+        logic_reward = self._calculate_reward(player_id=1)
+        rewards = [rl_reward, logic_reward]
         
         # 检查是否结束
         done = self.game_manager.game_over or self.current_step >= self.max_steps
@@ -118,7 +131,7 @@ class TankBattleEnv(gym.Env):
             'winner': self.game_manager.winner
         }
         
-        return observation, reward, done, info
+        return observation, rewards, done, info
     
     def render(self, mode: str = 'human'):
         """渲染环境"""
@@ -138,10 +151,15 @@ class TankBattleEnv(gym.Env):
         if hasattr(self, 'screen') and self.render_mode == 'human':
             pygame.quit()
     
-    def _execute_action(self, action: int):
-        """执行动作"""
-        # 获取玩家1的坦克（AI控制）
-        tank = self.game_manager.get_player_tank(1)
+    def _execute_action(self, action: int, player_id: int = 0):
+        """执行动作
+        
+        Args:
+            action: 要执行的动作
+            player_id: 玩家ID（0表示RL智能体，1表示Logic智能体）
+        """
+        # 获取指定玩家的坦克
+        tank = self.game_manager.get_player_tank(player_id)
         if tank is None:
             return
         
@@ -288,8 +306,15 @@ class TankBattleEnv(gym.Env):
         
         return bullet_obs
     
-    def _calculate_reward(self) -> float:
-        """计算奖励"""
+    def _calculate_reward(self, player_id: int = 0) -> float:
+        """计算奖励
+        
+        Args:
+            player_id: 玩家ID（0表示RL智能体，1表示Logic智能体）
+            
+        Returns:
+            float: 计算得到的奖励值
+        """
         if self.game_manager is None or self.last_game_state is None:
             return 0.0
         
@@ -298,20 +323,23 @@ class TankBattleEnv(gym.Env):
         # 获取当前游戏状态
         current_state = self.game_manager.game_state
         
+        # 获取玩家相关的状态键
+        player_key = f"player{player_id + 1}"
+        
         # 击杀奖励
-        kills_diff = current_state["player1_kills"] - self.last_game_state["player1_kills"]
+        kills_diff = current_state[f"{player_key}_kills"] - self.last_game_state[f"{player_key}_kills"]
         reward += kills_diff * self.kill_reward
         
         # 命中奖励
-        hits_diff = current_state["player1_hits"] - self.last_game_state["player1_hits"]
+        hits_diff = current_state[f"{player_key}_hits"] - self.last_game_state[f"{player_key}_hits"]
         reward += hits_diff * self.hit_reward
         
         # 被命中惩罚
-        damage_taken_diff = current_state["player1_damage_taken"] - self.last_game_state["player1_damage_taken"]
+        damage_taken_diff = current_state[f"{player_key}_damage_taken"] - self.last_game_state[f"{player_key}_damage_taken"]
         reward += damage_taken_diff * self.hit_penalty
         
         # 胜利奖励
-        if self.game_manager.game_over and self.game_manager.winner == 1:
+        if self.game_manager.game_over and self.game_manager.winner == player_id:
             reward += self.win_reward
         
         # 时间惩罚

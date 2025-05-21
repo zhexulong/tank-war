@@ -64,7 +64,7 @@ class SimplifiedGame:
         
         # 游戏常量
         self.GRID_SIZE = 10  # 每个格子的像素大小
-        self.MAP_SIZE = 15   # 地图大小(格子数)
+        self.MAP_SIZE = 16   # 地图大小(格子数)
         self.SCREEN_SIZE = self.GRID_SIZE * self.MAP_SIZE  # 屏幕大小
         
         # 初始化屏幕

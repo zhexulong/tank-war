@@ -8,42 +8,20 @@ from collections import deque
 import random
 
 class DQNNetwork(nn.Module):
-    """深度Q网络，用于估计动作价值"""
+    """轻量级深度Q网络，用于估计动作价值"""
     
     def __init__(self, input_shape: Dict, output_dim: int):
         super(DQNNetwork, self).__init__()
         
-        # 地图特征提取器（卷积网络）
-        self.map_conv = nn.Sequential(
-            nn.Conv2d(input_shape['map'][2], 16, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(32, 32, kernel_size=3, stride=1),
-            nn.ReLU(),
-            nn.Flatten()
-        )
-        
-        # 计算卷积输出大小
-        map_size = input_shape['map'][0] - 2  # 第三层卷积后的大小
-        map_features = 32 * map_size * map_size
-        
-        # 坦克特征处理器（全连接网络）
-        self.tank_fc = nn.Sequential(
-            nn.Linear(input_shape['tanks'][0], 64),
-            nn.ReLU()
-        )
-        
-        # 子弹特征处理器（全连接网络）
+        # 计算展平后的输入维度
+        map_input_size = input_shape['map'][0] * input_shape['map'][1] * input_shape['map'][2]
+        tank_input_size = input_shape['tanks'][0]
         bullet_input_size = input_shape['bullets'][0] * input_shape['bullets'][1]
-        self.bullet_fc = nn.Sequential(
-            nn.Linear(bullet_input_size, 64),
-            nn.ReLU()
-        )
+        total_input_size = map_input_size + tank_input_size + bullet_input_size
         
-        # 合并所有特征的全连接层
-        self.combined_fc = nn.Sequential(
-            nn.Linear(map_features + 64 + 64, 256),
+        # 简单的全连接网络
+        self.fc_net = nn.Sequential(
+            nn.Linear(total_input_size, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
@@ -51,22 +29,16 @@ class DQNNetwork(nn.Module):
         )
     
     def forward(self, x: Dict) -> torch.Tensor:
-        # 处理地图特征
-        map_data = x['map'].permute(0, 3, 1, 2)  # [B, H, W, C] -> [B, C, H, W]
-        map_features = self.map_conv(map_data)
-        
-        # 处理坦克特征
-        tank_features = self.tank_fc(x['tanks'])
-        
-        # 处理子弹特征
-        bullets = x['bullets'].view(x['bullets'].size(0), -1)  # 展平
-        bullet_features = self.bullet_fc(bullets)
+        # 展平所有输入
+        map_flat = x['map'].view(x['map'].size(0), -1)
+        tanks_flat = x['tanks']
+        bullets_flat = x['bullets'].view(x['bullets'].size(0), -1)
         
         # 合并所有特征
-        combined = torch.cat([map_features, tank_features, bullet_features], dim=1)
+        combined = torch.cat([map_flat, tanks_flat, bullets_flat], dim=1)
         
         # 输出动作价值
-        return self.combined_fc(combined)
+        return self.fc_net(combined)
 
 class ReplayBuffer:
     """经验回放缓冲区"""
@@ -85,7 +57,9 @@ class ReplayBuffer:
     def __len__(self) -> int:
         return len(self.buffer)
 
-class DQNAgent:
+from ai.base_agent import BaseAgent
+
+class DQNAgent(BaseAgent):
     """DQN智能体"""
     
     def __init__(self, state_shape: Dict, action_dim: int, device: str = 'cuda' if torch.cuda.is_available() else 'cpu'):
