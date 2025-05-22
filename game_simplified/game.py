@@ -147,6 +147,7 @@ class SimplifiedGame:
     def get_game_state_for_rl(self):
         """获取用于强化学习的游戏状态"""
         return {
+            'map': self.current_map.grid,  # 添加地图网格信息
             'tanks': [
                 {'position': tank.position, 'direction': tank.direction, 'player_id': tank.player_id}
                 for tank in self.tanks
@@ -155,6 +156,14 @@ class SimplifiedGame:
             'obstacles': list(self.current_map.obstacles),
             'game_over': self.game_over,
             'winner': self.winner
+        }
+    
+    def get_state_shape(self):
+        """获取游戏状态空间的形状"""
+        return {
+            'map': (self.MAP_SIZE, self.MAP_SIZE),  # 地图网格
+            'tanks': (2, 4),  # 两辆坦克，每个坦克 [x,y,direction,player_id]
+            'bullets': (10, 4),  # 最多10颗子弹，每个子弹 [x,y,direction,player_id]
         }
     
     def generate_obstacles(self, num_obstacles=50):
@@ -406,22 +415,23 @@ class SimplifiedGame:
         # 优先水平移动
         if abs(dx) > abs(dy):
             if dx > 0:
-                new_pos[2] = 1  # 右
+                new_direction = 1  # 右
                 new_pos[0] = min(self.MAP_SIZE - 1, new_pos[0] + 1)
             else:
-                new_pos[2] = 3  # 左
+                new_direction = 3  # 左
                 new_pos[0] = max(0, new_pos[0] - 1)
         else:
             if dy > 0:
-                new_pos[2] = 2  # 下
+                new_direction = 2  # 下
                 new_pos[1] = min(self.MAP_SIZE - 1, new_pos[1] + 1)
             else:
-                new_pos[2] = 0  # 上
+                new_direction = 0  # 上
                 new_pos[1] = max(0, new_pos[1] - 1)
         
         # 检查碰撞
         if (new_pos[0], new_pos[1]) not in self.current_map.obstacles:
             self.tanks[1].update_position(new_pos)
+            self.tanks[1].update_direction(new_direction)
         
         # 发射子弹
         if random.random() < 0.3:  # 30%的概率发射子弹

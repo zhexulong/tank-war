@@ -17,14 +17,8 @@ class SimplifiedAIInterface:
         else:  # dqn
             from ai.agent import DQNAgent
             
-            # 定义简化版的状态和动作空间
-            state_shape = {
-                'tanks': list,     # 坦克信息列表
-                'bullets': list,   # 子弹信息列表 
-                'obstacles': list, # 障碍物位置列表
-                'game_over': bool,
-                'winner': int
-            }
+            # 从游戏获取状态空间定义
+            state_shape = self.game_manager.get_state_shape()
             action_dim = 6  # 不动/前进/后退/左转/右转/开火
             
             agent = DQNAgent(state_shape, action_dim)

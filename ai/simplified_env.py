@@ -5,14 +5,13 @@ from ai.base_agent import BaseAgent
 
 class SimplifiedGameEnv:
     """简化版游戏环境"""
-    
     def __init__(self, render_mode=None):
         self.render_mode = render_mode
         self.game = None
         
         # 定义观察空间
         self.observation_space = {
-            'map': (15, 15),  # 地图大小
+            'map': (16, 16),  # 地图大小，与 SimplifiedGame.MAP_SIZE 保持一致
             'tanks': (2, 4),  # 2个坦克，每个坦克4个属性（x, y, angle, health）
             'bullets': (10, 3)  # 最多10颗子弹，每颗子弹3个属性（x, y, angle）
         }
@@ -20,12 +19,20 @@ class SimplifiedGameEnv:
         # 定义动作空间
         self.action_space = type('', (), {'n': 5})()  # 5个动作：0-不动，1-前进，2-后退，3-左转，4-右转
         
+        # 确保两个智能体都被初始化
+        self.ai_opponent = True
+        self.ai_type = 'logic'
+        self.second_ai_type = 'dqn'
         self.reset()
-    
+
     def reset(self):
         """重置环境"""
         # 创建新游戏实例
-        self.game = SimplifiedGame(ai_opponent=True, ai_type='logic')
+        self.game = SimplifiedGame(ai_opponent=True, ai_type=self.ai_type, second_ai_type=self.second_ai_type)
+        
+        # 确保两个智能体都被正确初始化
+        self.game.ai_interface.load_agent(1, None, self.second_ai_type)  # DQN agent
+        self.game.ai_interface.load_agent(2, None, self.ai_type)  # Logic agent
         
         # 获取初始状态
         state = self.game.ai_interface.get_observation(1)
@@ -50,13 +57,13 @@ class SimplifiedGameEnv:
         # 执行RL智能体的动作
         tank1 = self.game.get_player_tank(1)
         self.game.ai_interface._execute_action(tank1, actions[0])
-        
-        # 执行Logic智能体的动作
+          # 执行Logic智能体的动作
         tank2 = self.game.get_player_tank(2)
         self.game.ai_interface._execute_action(tank2, actions[1])
         
         # 更新游戏状态
-        self.game.update()
+        self.game.update_ai()
+        self.game.update_bullets()
         
         # 获取新状态
         next_state = self.game.ai_interface.get_observation(1)
@@ -70,7 +77,7 @@ class SimplifiedGameEnv:
         
         # 渲染
         if self.render_mode == 'human':
-            self.game.render()
+            self.game.draw()
         
         return next_state, rewards, done, info
     
@@ -105,7 +112,7 @@ class SimplifiedGameEnv:
     def render(self):
         """渲染游戏画面"""
         if self.render_mode == 'human':
-            self.game.render()
+            self.game.draw()
     
     def close(self):
         """关闭环境"""

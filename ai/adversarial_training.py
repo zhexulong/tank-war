@@ -20,7 +20,7 @@ def train_against_logic(episodes: int = 1000, save_interval: int = 100, render: 
     }
     action_dim = env.action_space.n
     rl_agent = DQNAgent(state_shape, action_dim)
-    logic_agent = LogicAgent(env.game_manager)
+    logic_agent = LogicAgent()
     
     # 创建保存目录
     os.makedirs('models', exist_ok=True)

@@ -292,7 +292,7 @@ def evaluate_agent(agent_path: str, episodes: int = 10, render: bool = True):
 
 if __name__ == "__main__":
     # 训练单个智能体
-    train_single_agent(episodes=500, save_interval=50, render=True)
+    train_single_agent(episodes=5000, save_interval=100, render=False)
     
     # 评估智能体
     # evaluate_agent("models/agent_final.pt", episodes=10, render=True)

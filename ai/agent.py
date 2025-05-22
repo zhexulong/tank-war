@@ -14,9 +14,9 @@ class DQNNetwork(nn.Module):
         super(DQNNetwork, self).__init__()
         
         # 计算展平后的输入维度
-        map_input_size = input_shape['map'][0] * input_shape['map'][1] * input_shape['map'][2]
-        tank_input_size = input_shape['tanks'][0]
-        bullet_input_size = input_shape['bullets'][0] * input_shape['bullets'][1]
+        map_input_size = int(np.prod(input_shape['map']))
+        tank_input_size = int(np.prod(input_shape['tanks'])) # MODIFIED LINE
+        bullet_input_size = int(np.prod(input_shape['bullets']))
         total_input_size = map_input_size + tank_input_size + bullet_input_size
         
         # 简单的全连接网络
@@ -31,7 +31,7 @@ class DQNNetwork(nn.Module):
     def forward(self, x: Dict) -> torch.Tensor:
         # 展平所有输入
         map_flat = x['map'].view(x['map'].size(0), -1)
-        tanks_flat = x['tanks']
+        tanks_flat = x['tanks'].view(x['tanks'].size(0), -1) # MODIFIED LINE
         bullets_flat = x['bullets'].view(x['bullets'].size(0), -1)
         
         # 合并所有特征
@@ -153,19 +153,127 @@ class DQNAgent(BaseAgent):
         return loss.item()
     
     def _dict_to_tensor(self, state: Dict) -> Dict:
-        """将状态字典转换为张量字典"""
+        """将状态字典转换为张量字典，确保输出符合 self.state_shape"""
+        
+        # Get expected shapes from self.state_shape
+        expected_map_shape = self.state_shape['map']
+        expected_tanks_shape = self.state_shape['tanks'] # (num_tanks, num_tank_features)
+        expected_bullets_shape = self.state_shape['bullets'] # (num_bullets, num_bullet_features)
+
+        # Define feature keys consistently (assuming these are correct from _batch_dict_to_tensor context)
+        tank_feature_keys = ['x', 'y', 'angle', 'hp'] 
+        bullet_feature_keys = ['x', 'y', 'angle'] # Consistent with _batch_dict_to_tensor summary
+
+        # --- MAP PROCESSING ---
+        map_np = np.zeros(expected_map_shape, dtype=np.float32)
+        raw_map_data = state.get('map')
+        if raw_map_data is not None:
+            try:
+                data_to_assign = np.asarray(raw_map_data, dtype=np.float32)
+                # Determine slices to prevent out-of-bounds, ensuring data fits into map_np
+                slices_source = tuple(slice(min(s_dim, e_dim)) for s_dim, e_dim in zip(data_to_assign.shape, expected_map_shape))
+                slices_target = tuple(slice(min(s_dim, e_dim)) for s_dim, e_dim in zip(data_to_assign.shape, expected_map_shape))
+                map_np[slices_target] = data_to_assign[slices_source]
+            except Exception as e:
+                # print(f"Warning: Could not process map data in _dict_to_tensor: {e}")
+                pass # map_np remains zeros
+
+        # --- TANKS PROCESSING ---
+        tanks_np = np.zeros(expected_tanks_shape, dtype=np.float32)
+        raw_tanks_data = state.get('tanks', [])
+        if isinstance(raw_tanks_data, list):
+            for i, tank_data_dict in enumerate(raw_tanks_data):
+                if i < expected_tanks_shape[0]: # Ensure we don't exceed max_tanks
+                    if isinstance(tank_data_dict, dict):
+                        for j, key in enumerate(tank_feature_keys):
+                            if j < expected_tanks_shape[1]: # Ensure we don't exceed tank_features
+                                tanks_np[i, j] = float(tank_data_dict.get(key, 0.0))
+                else:
+                    break # Stop if we have more tanks in state than expected_tanks_shape allows
+
+        # --- BULLETS PROCESSING ---
+        bullets_np = np.zeros(expected_bullets_shape, dtype=np.float32)
+        raw_bullets_data = state.get('bullets', [])
+        if isinstance(raw_bullets_data, list):
+            for i, bullet_data_dict in enumerate(raw_bullets_data):
+                if i < expected_bullets_shape[0]: # Ensure we don't exceed max_bullets
+                    if isinstance(bullet_data_dict, dict):
+                        for j, key in enumerate(bullet_feature_keys):
+                            if j < expected_bullets_shape[1]: # Ensure we don't exceed bullet_features
+                                bullets_np[i, j] = float(bullet_data_dict.get(key, 0.0))
+                else:
+                    break # Stop if we have more bullets in state than expected_bullets_shape allows
+
         return {
-            'map': torch.tensor(state['map'], dtype=torch.float32, device=self.device).unsqueeze(0),
-            'tanks': torch.tensor(state['tanks'], dtype=torch.float32, device=self.device).unsqueeze(0),
-            'bullets': torch.tensor(state['bullets'], dtype=torch.float32, device=self.device).unsqueeze(0)
+            'map': torch.from_numpy(map_np).to(self.device).unsqueeze(0),
+            'tanks': torch.from_numpy(tanks_np).to(self.device).unsqueeze(0),
+            'bullets': torch.from_numpy(bullets_np).to(self.device).unsqueeze(0)
         }
     
     def _batch_dict_to_tensor(self, states: Tuple[Dict]) -> Dict:
         """将状态字典批量转换为张量字典"""
+        
+        expected_map_shape = self.state_shape['map']
+        expected_tanks_shape = self.state_shape['tanks'] # (num_tanks, num_tank_features)
+        expected_bullets_shape = self.state_shape['bullets'] # (num_bullets, num_bullet_features)
+
+        tank_feature_keys = ['x', 'y', 'angle', 'hp'] # Should match expected_tanks_shape[1]
+        bullet_feature_keys = ['x', 'y', 'angle'] # CORRECTED: Should match expected_bullets_shape[1]
+
+        maps_list = []
+        tanks_list = []
+        bullets_list = []
+        
+        for s in states:
+            # --- MAP PROCESSING ---
+            raw_map_data = s.get('map')
+            current_map_arr = np.zeros(expected_map_shape, dtype=np.float32)
+            if raw_map_data is not None:
+                try:
+                    data_np = np.asarray(raw_map_data, dtype=np.float32)
+                    # Handle cases where data_np might not be 2D or has incorrect shape
+                    if data_np.ndim == expected_map_shape.ndim: # type: ignore
+                        slice_dims = [min(data_np.shape[i], expected_map_shape[i]) for i in range(data_np.ndim)]
+                        current_map_arr[tuple(slice(sd) for sd in slice_dims)] = data_np[tuple(slice(sd) for sd in slice_dims)]
+                    elif data_np.size == np.prod(expected_map_shape): # type: ignore
+                         current_map_arr = data_np.reshape(expected_map_shape)
+                except Exception:
+                    # Keep current_map_arr as zeros if conversion fails
+                    pass
+            maps_list.append(current_map_arr)
+
+            # --- TANKS PROCESSING ---
+            processed_tank_features_for_state = np.zeros(expected_tanks_shape, dtype=np.float32)
+            raw_tanks_data = s.get('tanks', [])
+            if isinstance(raw_tanks_data, list):
+                for i in range(expected_tanks_shape[0]): # Iterate up to num_expected_tanks
+                    if i < len(raw_tanks_data) and isinstance(raw_tanks_data[i], dict):
+                        tank_dict = raw_tanks_data[i]
+                        for j, key in enumerate(tank_feature_keys):
+                            if j < expected_tanks_shape[1]: # Ensure we don't write out of bounds for features
+                                processed_tank_features_for_state[i, j] = float(tank_dict.get(key, 0.0))
+            tanks_list.append(processed_tank_features_for_state)
+
+            # --- BULLETS PROCESSING ---
+            processed_bullet_features_for_state = np.zeros(expected_bullets_shape, dtype=np.float32)
+            raw_bullets_data = s.get('bullets', [])
+            if isinstance(raw_bullets_data, list):
+                for i in range(expected_bullets_shape[0]): # Iterate up to num_expected_bullets
+                    if i < len(raw_bullets_data) and isinstance(raw_bullets_data[i], dict):
+                        bullet_dict = raw_bullets_data[i]
+                        for j, key in enumerate(bullet_feature_keys):
+                             if j < expected_bullets_shape[1]: # Ensure we don't write out of bounds for features
+                                processed_bullet_features_for_state[i, j] = float(bullet_dict.get(key, 0.0))
+            bullets_list.append(processed_bullet_features_for_state)
+        
+        maps_np = np.stack(maps_list)
+        tanks_np = np.stack(tanks_list)
+        bullets_np = np.stack(bullets_list)
+
         return {
-            'map': torch.tensor(np.array([s['map'] for s in states]), dtype=torch.float32, device=self.device),
-            'tanks': torch.tensor(np.array([s['tanks'] for s in states]), dtype=torch.float32, device=self.device),
-            'bullets': torch.tensor(np.array([s['bullets'] for s in states]), dtype=torch.float32, device=self.device)
+            'map': torch.from_numpy(maps_np).to(self.device),
+            'tanks': torch.from_numpy(tanks_np).to(self.device),
+            'bullets': torch.from_numpy(bullets_np).to(self.device)
         }
     
     def save(self, path: str):
