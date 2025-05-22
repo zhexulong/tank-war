@@ -450,6 +450,13 @@ class SimplifiedGame:
         # 游戏结束检查已移至update_bullets方法中
         pass
     
+    def close(self):
+        """关闭游戏，释放资源"""
+        try:
+            pygame.quit()
+        except:
+            pass  # 如果 pygame 已经关闭，忽略异常
+    
     def run(self):
         """游戏主循环"""
         clock = pygame.time.Clock()

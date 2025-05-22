@@ -1,3 +1,5 @@
 # 坦克世界大战游戏依赖
 pygame==2.1.2
-gym==0.21.0
+gym==0.26.0
+z3-solver
+matplotlib

@@ -8,6 +8,7 @@ from ai.logic_agent import LogicAgent
 from ai.environment import TankBattleEnv
 from ai.simplified_env import SimplifiedGameEnv
 from ai.training import plot_training_curves
+import torch
 
 def train_against_logic(episodes: int = 1000, save_interval: int = 100, render: bool = False, checkpoint_path: str = None):
     """训练RL智能体对抗Logic智能体"""
@@ -31,24 +32,27 @@ def train_against_logic(episodes: int = 1000, save_interval: int = 100, render: 
     win_rates = []
     episode_lengths = []
     
+    # 计算移动平均
+    window_size = 20  # 减小窗口大小以更快获得反馈
+    moving_avg_reward = []
+    moving_avg_loss = []
+    moving_avg_win_rate = []
+    
     # 加载检查点（如果存在）
     start_episode = 1
     if checkpoint_path and os.path.exists(checkpoint_path):
         checkpoint = torch.load(checkpoint_path)
-        rl_agent.load_state_dict(checkpoint['model_state_dict'])
+        rl_agent.q_network.load_state_dict(checkpoint['model_state_dict'])
         rl_agent.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         rewards = checkpoint['rewards']
         losses = checkpoint['losses']
         win_rates = checkpoint['win_rates']
         episode_lengths = checkpoint['episode_lengths']
+        moving_avg_reward = checkpoint.get('moving_avg_reward', [])
+        moving_avg_loss = checkpoint.get('moving_avg_loss', [])
+        moving_avg_win_rate = checkpoint.get('moving_avg_win_rate', [])
         start_episode = checkpoint['episode'] + 1
         print(f"加载检查点：{checkpoint_path}，从第{start_episode}轮继续训练")
-    
-    # 计算移动平均
-    window_size = 100
-    moving_avg_reward = []
-    moving_avg_loss = []
-    moving_avg_win_rate = []
     
     # 训练循环
     for episode in range(1, episodes + 1):
@@ -99,18 +103,19 @@ def train_against_logic(episodes: int = 1000, save_interval: int = 100, render: 
         print(f"Episode {episode}/{episodes}, Reward: {episode_reward:.2f}, Loss: {episode_loss/max(1, episode_step):.4f}, "  
               f"Win: {win}, Steps: {episode_step}, Epsilon: {rl_agent.epsilon:.4f}")
         
-        # 计算移动平均
-        if len(rewards) >= window_size:
-            moving_avg_reward.append(np.mean(rewards[-window_size:]))
-            moving_avg_loss.append(np.mean(losses[-window_size:]))
-            moving_avg_win_rate.append(np.mean(win_rates[-window_size:]))
+        # 计算移动平均（使用可用的所有数据，最多window_size个）
+        current_window_size = min(len(rewards), window_size)
+        if current_window_size > 0:
+            moving_avg_reward.append(np.mean(rewards[-current_window_size:]))
+            moving_avg_loss.append(np.mean(losses[-current_window_size:]))
+            moving_avg_win_rate.append(np.mean(win_rates[-current_window_size:]))
         
         # 保存检查点和模型
         if episode % save_interval == 0:
             # 保存检查点
             checkpoint = {
                 'episode': episode,
-                'model_state_dict': rl_agent.state_dict(),
+                'model_state_dict': rl_agent.q_network.state_dict(),
                 'optimizer_state_dict': rl_agent.optimizer.state_dict(),
                 'rewards': rewards,
                 'losses': losses,
@@ -128,7 +133,7 @@ def train_against_logic(episodes: int = 1000, save_interval: int = 100, render: 
             # 绘制训练曲线
             plot_training_curves(
                 rewards, losses, win_rates, episode_lengths,
-                moving_avg_reward, moving_avg_loss, moving_avg_win_rate,
+                moving_avg_reward.copy(), moving_avg_loss.copy(), moving_avg_win_rate.copy(),
                 episode
             )
     
@@ -137,9 +142,10 @@ def train_against_logic(episodes: int = 1000, save_interval: int = 100, render: 
     
     # 关闭环境
     env.close()
-    
+    print(f"moving_avg_reward:{moving_avg_reward}, moving_avg_loss:{moving_avg_loss}, moving_avg_win_rate:{moving_avg_win_rate}")
     # 绘制最终训练曲线
-    plot_training_curves(rewards, losses, win_rates, episode_lengths, episodes)
+    plot_training_curves(rewards, losses, win_rates, episode_lengths,
+                         moving_avg_reward.copy(), moving_avg_loss.copy(), moving_avg_win_rate.copy(), episodes)
     
     return rl_agent
 
