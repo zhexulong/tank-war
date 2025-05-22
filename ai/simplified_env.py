@@ -17,7 +17,7 @@ class SimplifiedGameEnv:
         }
         
         # 定义动作空间
-        self.action_space = type('', (), {'n': 5})()  # 5个动作：0-不动，1-前进，2-后退，3-左转，4-右转
+        self.action_space = type('', (), {'n': 6})()  # 5个动作：0-不动，1-前进，2-后退，3-左转，4-右转
         
         # 确保两个智能体都被初始化
         self.ai_opponent = True
