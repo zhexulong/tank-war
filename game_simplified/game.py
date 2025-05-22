@@ -59,7 +59,7 @@ class SimplifiedTank:
         self.direction = new_direction
 
 class SimplifiedGame:
-    def __init__(self, ai_opponent=False, ai_type='dqn', second_ai_type=None):
+    def __init__(self, ai_opponent=False, ai_type='dqn', second_ai_type=None, render_mode=None):
         pygame.init()
         
         # 游戏常量
@@ -67,9 +67,15 @@ class SimplifiedGame:
         self.MAP_SIZE = 16   # 地图大小(格子数)
         self.SCREEN_SIZE = self.GRID_SIZE * self.MAP_SIZE  # 屏幕大小
         
-        # 初始化屏幕
-        self.screen = pygame.display.set_mode((self.SCREEN_SIZE, self.SCREEN_SIZE))
-        pygame.display.set_caption('简化版坦克大战')
+        # 渲染模式
+        self.render_mode = render_mode
+        
+        # 初始化屏幕（仅在需要渲染时）
+        if self.render_mode == 'human':
+            self.screen = pygame.display.set_mode((self.SCREEN_SIZE, self.SCREEN_SIZE))
+            pygame.display.set_caption('简化版坦克大战')
+        else:
+            self.screen = None
         
         # 颜色定义
         self.BLACK = (0, 0, 0)
@@ -352,6 +358,9 @@ class SimplifiedGame:
             pygame.draw.line(self.screen, color, (center_x, center_y), (center_x - self.GRID_SIZE, center_y))
     
     def draw(self):
+        if self.render_mode != 'human' or self.screen is None:
+            return
+            
         self.screen.fill(self.BLACK)
         
         # 绘制网格
@@ -450,7 +459,8 @@ class SimplifiedGame:
             frame_count += 1
             
             # 处理输入
-            self.handle_input()
+            if self.render_mode == 'human':
+                self.handle_input()
             
             if not self.game_over:
                 # 更新子弹
@@ -464,12 +474,13 @@ class SimplifiedGame:
             
             # 渲染游戏
             self.draw()
-            
-            # 控制帧率
-            clock.tick(10)  # 限制帧率为10 FPS
+            if self.render_mode == 'human':
+                pygame.display.flip()
+                clock.tick(10)  # 限制帧率为10 FPS
         
-        pygame.quit()
+        if self.render_mode == 'human':
+            pygame.quit()
 
-def main(ai_opponent=False, ai_type='dqn', second_ai_type=None):
-    game = SimplifiedGame(ai_opponent=ai_opponent, ai_type=ai_type, second_ai_type=second_ai_type)
+def main(ai_opponent=False, ai_type='dqn', second_ai_type=None, render_mode='human'):
+    game = SimplifiedGame(ai_opponent=ai_opponent, ai_type=ai_type, second_ai_type=second_ai_type, render_mode=render_mode)
     game.run()

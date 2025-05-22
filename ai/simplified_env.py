@@ -28,7 +28,7 @@ class SimplifiedGameEnv:
     def reset(self):
         """重置环境"""
         # 创建新游戏实例
-        self.game = SimplifiedGame(ai_opponent=True, ai_type=self.ai_type, second_ai_type=self.second_ai_type)
+        self.game = SimplifiedGame(ai_opponent=True, ai_type=self.ai_type, second_ai_type=self.second_ai_type, render_mode=self.render_mode)
         
         # 确保两个智能体都被正确初始化
         self.game.ai_interface.load_agent(1, None, self.second_ai_type)  # DQN agent
@@ -36,7 +36,6 @@ class SimplifiedGameEnv:
         
         # 获取初始状态
         state = self.game.ai_interface.get_observation(1)
-        
         return state
     
     def step(self, actions):

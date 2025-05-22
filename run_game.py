@@ -39,16 +39,17 @@ def main():
     # 根据游戏类型选择启动不同版本
     if args.game_type == 'simplified':
         from game_simplified.game import main as start_simplified_game
+        render_mode_value = 'human' if args.render else None
         if args.mode == 'human_vs_human':
-            start_simplified_game()
+            start_simplified_game(render_mode=render_mode_value)
         elif args.mode == 'human_vs_ai':
-            start_simplified_game(ai_opponent=True, ai_type=args.ai_type)
+            start_simplified_game(ai_opponent=True, ai_type=args.ai_type, render_mode=render_mode_value)
         elif args.mode == 'ai_vs_ai':
-            start_simplified_game(ai_opponent=True, ai_type=args.ai_type, second_ai_type=args.ai_type)
+            start_simplified_game(ai_opponent=True, ai_type=args.ai_type, second_ai_type=args.ai_type, render_mode=render_mode_value)
         elif args.mode == 'logic_ai_vs_human':
-            start_simplified_game(ai_opponent=True, ai_type='logic')
+            start_simplified_game(ai_opponent=True, ai_type='logic', render_mode=render_mode_value)
         elif args.mode == 'logic_ai_vs_ai':
-            start_simplified_game(ai_opponent=True, ai_type='logic', second_ai_type='logic')
+            start_simplified_game(ai_opponent=True, ai_type='logic', second_ai_type='logic', render_mode=render_mode_value)
         elif args.mode == 'train':
             from ai.training import train_single_agent
             train_single_agent(episodes=args.episodes, render=args.render, simplified=True)
