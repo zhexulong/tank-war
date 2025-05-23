@@ -59,13 +59,16 @@ class SimplifiedTank:
         self.direction = new_direction
 
 class SimplifiedGame:
-    def __init__(self, ai_opponent=False, ai_type='dqn', second_ai_type=None, render_mode=None):
+    def __init__(self, ai_opponent=False, ai_type='dqn', second_ai_type=None, render_mode=None, agent_path=None):
         pygame.init()
         
         # 游戏常量
         self.GRID_SIZE = 10  # 每个格子的像素大小
         self.MAP_SIZE = 16   # 地图大小(格子数)
         self.SCREEN_SIZE = self.GRID_SIZE * self.MAP_SIZE  # 屏幕大小
+        
+        # AI模型路径
+        self.agent_path = agent_path
         
         # 渲染模式
         self.render_mode = render_mode
@@ -134,13 +137,13 @@ class SimplifiedGame:
         
         print(f"正在初始化AI - 类型: {self.ai_type}")
         # 初始化AI（玩家2）
-        self.ai_interface.load_agent(2, None, self.ai_type)
+        self.ai_interface.load_agent(2, self.agent_path, self.ai_type)
         self.tanks[1].is_player = False
         
         # 如果是AI对战模式
         if self.second_ai_type:
             print(f"正在初始化第二个AI - 类型: {self.second_ai_type}")
-            self.ai_interface.load_agent(1, None, self.second_ai_type)
+            self.ai_interface.load_agent(1, self.agent_path, self.second_ai_type)
             self.tanks[0].is_player = False  # 设置玩家1的坦克为AI控制
 
     def get_player_tank(self, player_id):
@@ -152,8 +155,12 @@ class SimplifiedGame:
 
     def get_game_state_for_rl(self):
         """获取用于强化学习的游戏状态"""
+        # 重新生成地图网格：0表示空地，1表示障碍
+        map_grid = [[1 if self.current_map.is_obstacle(x, y) else 0
+                     for x in range(self.MAP_SIZE)]
+                    for y in range(self.MAP_SIZE)]
         return {
-            'map': self.current_map.grid,  # 添加地图网格信息
+            'map': map_grid,
             'tanks': [
                 {'position': tank.position, 'direction': tank.direction, 'player_id': tank.player_id}
                 for tank in self.tanks
@@ -169,7 +176,7 @@ class SimplifiedGame:
         return {
             'map': (self.MAP_SIZE, self.MAP_SIZE),  # 地图网格
             'tanks': (2, 4),  # 两辆坦克，每个坦克 [x,y,direction,player_id]
-            'bullets': (10, 4),  # 最多10颗子弹，每个子弹 [x,y,direction,player_id]
+            'bullets': (10, 3),  # 最多10颗子弹，每个子弹 [x,y,direction]
         }
     
     def generate_obstacles(self, num_obstacles=50):
@@ -473,6 +480,10 @@ class SimplifiedGame:
                 # 更新子弹
                 self.update_bullets()
                 
+                # 更新AI控制的坦克
+                if self.ai_opponent or self.second_ai_type:
+                    self.ai_interface.update_ai_controlled_tanks()
+                
                 # AI状态输出（每秒一次）
                 if self.ai_opponent and frame_count % 10 == 0:
                     print("\nAI状态更新:")
@@ -488,6 +499,6 @@ class SimplifiedGame:
         if self.render_mode == 'human':
             pygame.quit()
 
-def main(ai_opponent=False, ai_type='dqn', second_ai_type=None, render_mode='human'):
-    game = SimplifiedGame(ai_opponent=ai_opponent, ai_type=ai_type, second_ai_type=second_ai_type, render_mode=render_mode)
+def main(ai_opponent=False, ai_type='dqn', second_ai_type=None, render_mode='human', agent_path=None):
+    game = SimplifiedGame(ai_opponent=ai_opponent, ai_type=ai_type, second_ai_type=second_ai_type, render_mode=render_mode, agent_path=agent_path)
     game.run()

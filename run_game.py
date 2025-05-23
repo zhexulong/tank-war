@@ -43,7 +43,7 @@ def main():
         if args.mode == 'human_vs_human':
             start_simplified_game(render_mode=render_mode_value)
         elif args.mode == 'human_vs_ai':
-            start_simplified_game(ai_opponent=True, ai_type=args.ai_type, render_mode=render_mode_value)
+            start_simplified_game(ai_opponent=True, ai_type=args.ai_type, agent_path=args.agent, render_mode=render_mode_value)
         elif args.mode == 'ai_vs_ai':
             start_simplified_game(ai_opponent=True, ai_type=args.ai_type, second_ai_type=args.ai_type, render_mode=render_mode_value)
         elif args.mode == 'logic_ai_vs_human':

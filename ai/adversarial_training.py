@@ -33,7 +33,7 @@ def train_against_logic(episodes: int = 1000, save_interval: int = 100, render: 
     episode_lengths = []
     
     # 计算移动平均
-    window_size = 20  # 减小窗口大小以更快获得反馈
+    window_size = 100
     moving_avg_reward = []
     moving_avg_loss = []
     moving_avg_win_rate = []
@@ -55,7 +55,7 @@ def train_against_logic(episodes: int = 1000, save_interval: int = 100, render: 
         print(f"加载检查点：{checkpoint_path}，从第{start_episode}轮继续训练")
     
     # 训练循环
-    for episode in range(1, episodes + 1):
+    for episode in range(start_episode, episodes + 1):
         # 重置环境
         state = env.reset()
         episode_reward = 0
@@ -72,10 +72,10 @@ def train_against_logic(episodes: int = 1000, save_interval: int = 100, render: 
             logic_action = logic_agent.select_action(state)
             
             # 执行动作
-            next_state, rewards, done, info = env.step([rl_action, logic_action])
+            next_state, step_rewards, done, info = env.step([rl_action, logic_action])
             
             # 存储RL智能体的经验
-            rl_agent.replay_buffer.push(state, rl_action, rewards[0], next_state, done)
+            rl_agent.replay_buffer.push(state, rl_action, step_rewards[0], next_state, done)
             
             # 训练RL智能体
             loss = rl_agent.train()
@@ -84,7 +84,7 @@ def train_against_logic(episodes: int = 1000, save_interval: int = 100, render: 
             
             # 更新状态和奖励
             state = next_state
-            episode_reward += rewards[0]  # 只记录RL智能体的奖励
+            episode_reward += step_rewards[0]  # 只记录RL智能体的奖励
             episode_step += 1
             
             # 渲染

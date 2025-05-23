@@ -48,7 +48,7 @@ class SimplifiedAIInterface:
                 if isinstance(agent, LogicAgent):
                     action = agent.select_action(observation)
                 else:
-                    action = agent.get_action(observation)
+                    action = agent.select_action(observation)
                 
                 self._execute_action(tank, action)
     

@@ -21,18 +21,35 @@ class LogicAgent(BaseAgent):
         Returns:
             action: 选择的动作（0-4，分别表示 stay、forward、turn_left、turn_right、fire）
         """
+        # 兼容简化环境的state格式，将简化版tank属性(x,y,angle)映射为(position,direction)
+        raw_tanks = state.get('tanks', [])
+        tanks = []
+        for t in raw_tanks:
+            if 'position' not in t:
+                # 简化格式
+                tanks.append({
+                    'position': [t.get('x', 0), t.get('y', 0)],
+                    'direction': t.get('angle', t.get('direction', 0)),
+                    'player_id': t.get('player_id', None)
+                })
+            else:
+                tanks.append(t)
+        state['tanks'] = tanks
         if self.debug:
             print("\nLogicAgent决策过程:")
-            print("1. 当前状态:")
-            tanks = state['tanks']
-            print(tanks)
-            # 假设第一个坦克是AI控制的坦克（玩家2）
-            my_tank = tanks[1]  # player_id为2的坦克
-            enemy_tank = tanks[0]  # player_id为1的坦克
-            print(f"- 自身位置: ({my_tank['position'][0]:.2f}, {my_tank['position'][1]:.2f})")
-            print(f"- 自身朝向: {my_tank['direction'] * 90:.1f}度")
-            print(f"- 敌人位置: ({enemy_tank['position'][0]:.2f}, {enemy_tank['position'][1]:.2f})")
-            print(f"- 敌人朝向: {enemy_tank['direction'] * 90:.1f}度")
+            print("1. 当前状态(tanks列表):", tanks)
+            # 假设第二个对象是AI控制的坦克（player_id=2）
+            my_tank = tanks[1]
+            enemy_tank = tanks[0]
+            # 打印位置信息和朝向
+            px, py = my_tank['position']
+            ex, ey = enemy_tank['position']
+            pd = my_tank['direction'] * 90
+            ed = enemy_tank['direction'] * 90
+            print(f"- 自身位置: ({px:.2f}, {py:.2f})")
+            print(f"- 自身朝向: {pd:.1f}度")
+            print(f"- 敌人位置: ({ex:.2f}, {ey:.2f})")
+            print(f"- 敌人朝向: {ed:.1f}度")
         
         # 创建求解器
         self.solver = Solver()

@@ -27,3 +27,4 @@ data/collected/*
 .DS_Store
 Thumbs.db
 models/
+output/

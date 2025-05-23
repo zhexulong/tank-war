@@ -82,9 +82,9 @@ class DQNAgent(BaseAgent):
         # 超参数
         self.gamma = 0.99  # 折扣因子
         self.epsilon = 1.0  # 探索率
-        self.epsilon_min = 0.1  # 最小探索率
-        self.epsilon_decay = 0.995  # 探索率衰减
-        self.target_update = 10  # 目标网络更新频率
+        self.epsilon_min = 0.01  # 最小探索率
+        self.epsilon_decay = 0.999  # 探索率衰减
+        self.target_update = 100  # 目标网络更新频率
         self.batch_size = 64  # 批量大小
         
         # 训练步数
@@ -92,18 +92,19 @@ class DQNAgent(BaseAgent):
     
     def select_action(self, state: Dict, training: bool = True) -> int:
         """选择动作"""
+        # 打印原始状态以便调试
+        print("DQNAgent raw state:", state)
         if training and np.random.rand() < self.epsilon:
             # 探索：随机选择动作
             return np.random.randint(self.action_dim)
         else:
             # 利用：选择价值最高的动作
             with torch.no_grad():
-                # 转换状态为张量
+                # 转换状态为张量并打印输入tensor
                 state_tensor = self._dict_to_tensor(state)
-                
+                print("DQNAgent input tensor:", state_tensor)
                 # 获取动作价值
                 q_values = self.q_network(state_tensor)
-                
                 # 选择价值最高的动作
                 return q_values.argmax().item()
     
