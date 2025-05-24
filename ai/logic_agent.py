@@ -261,3 +261,77 @@ class LogicAgent(BaseAgent):
         """动作ID转字符串"""
         action_strs = ["stay", "forward",  "turn_left", "turn_right", "fire"]
         return action_strs[action]
+
+class LogicExpertAgent(LogicAgent):
+    """专家逻辑智能体，从玩家0（RL智能体）的视角给出建议"""
+    
+    def __init__(self):
+        super().__init__()
+        self.debug = False  # 默认关闭调试，避免专家输出过多信息
+    
+    def select_action(self, state: Dict) -> int:
+        """从RL智能体视角选择动作
+        
+        Args:
+            state: 游戏状态字典
+        Returns:
+            action: 专家建议的动作（0-4，不包含后退）
+        """
+        # 兼容简化环境的state格式，将简化版tank属性(x,y,angle)映射为(position,direction)
+        raw_tanks = state.get('tanks', [])
+        tanks = []
+        for t in raw_tanks:
+            if 'position' not in t:
+                # 简化格式
+                tanks.append({
+                    'position': [t.get('x', 0), t.get('y', 0)],
+                    'direction': t.get('angle', t.get('direction', 0)),
+                    'player_id': t.get('player_id', None)
+                })
+            else:
+                tanks.append(t)
+        
+        if len(tanks) < 2:
+            return 0  # 如果状态异常，返回停留动作
+        
+        # 创建交换后的状态
+        swapped_state = state.copy()
+        
+        # 深拷贝坦克列表，以免修改原始状态
+        swapped_tanks = []
+        # 将坦克0和坦克1交换位置，使原本的坦克1（对手）变成专家视角下的自己（索引1）
+        for i, tank in enumerate(tanks):
+            new_tank = tank.copy()
+            if i == 0:
+                new_tank['player_id'] = 1  # 将原来的坦克0（RL智能体）变为坦克1（对手）
+                swapped_tanks.append(new_tank)
+            elif i == 1:
+                new_tank['player_id'] = 0  # 将原来的坦克1（对手）变为坦克0（自己）
+                swapped_tanks.insert(0, new_tank)  # 插入到队首
+            else:
+                swapped_tanks.append(new_tank)
+        
+        swapped_state['tanks'] = swapped_tanks
+        
+        # 如果有bullets字段，也需要交换子弹的所有者标识
+        if 'bullets' in state:
+            swapped_bullets = []
+            for bullet in state.get('bullets', []):
+                new_bullet = bullet.copy()
+                if 'owner' in new_bullet:
+                    if new_bullet['owner'] == 0:
+                        new_bullet['owner'] = 1
+                    elif new_bullet['owner'] == 1:
+                        new_bullet['owner'] = 0
+                swapped_bullets.append(new_bullet)
+            swapped_state['bullets'] = swapped_bullets
+            
+        # 使用父类方法计算动作，但使用交换后的状态
+        logic_action = super().select_action(swapped_state)
+        
+        # LogicAgent的动作空间: 0-stay, 1-forward, 2-turn_left, 3-turn_right, 4-fire
+        # 这些对于专家建议来说是合适的动作，直接返回
+        return logic_action
+        
+        # 如果状态异常，返回停留动作
+        return 0
