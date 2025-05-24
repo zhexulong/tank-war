@@ -19,9 +19,13 @@ class DQNNetwork(nn.Module):
         bullet_input_size = int(np.prod(input_shape['bullets']))
         total_input_size = map_input_size + tank_input_size + bullet_input_size
         
-        # 简单的全连接网络
+        # 更深的全连接网络，增加层数和神经元
         self.fc_net = nn.Sequential(
-            nn.Linear(total_input_size, 256),
+            nn.Linear(total_input_size, 512),
+            nn.ReLU(),
+            nn.Linear(512, 384),
+            nn.ReLU(),
+            nn.Linear(384, 256),
             nn.ReLU(),
             nn.Linear(256, 128),
             nn.ReLU(),
@@ -41,14 +45,47 @@ class DQNNetwork(nn.Module):
         return self.fc_net(combined)
 
 class ReplayBuffer:
-    """经验回放缓冲区"""
+    """支持多步学习的经验回放缓冲区"""
     
-    def __init__(self, capacity: int):
+    def __init__(self, capacity: int, n_step: int = 3, gamma: float = 0.99):
         self.buffer = deque(maxlen=capacity)
+        self.n_step_buffer = deque(maxlen=n_step)
+        self.n_step = n_step
+        self.gamma = gamma
+    
+    def _calculate_n_step_info(self):
+        """计算n步奖励和下一个状态"""
+        reward = 0
+        # 计算多步奖励
+        for idx, (_, _, r, _, _) in enumerate(self.n_step_buffer):
+            reward += r * (self.gamma ** idx)
+        
+        # 获取n步后的下一个状态和完成标志
+        _, _, _, next_state, done = self.n_step_buffer[-1]
+        
+        # 获取初始状态和动作
+        first_state, first_action, _, _, _ = self.n_step_buffer[0]
+        
+        return first_state, first_action, reward, next_state, done
     
     def push(self, state: Dict, action: int, reward: float, next_state: Dict, done: bool):
-        """添加经验"""
-        self.buffer.append((state, action, reward, next_state, done))
+        """添加单步经验到n步缓冲区，并可能添加多步经验到主缓冲区"""
+        # 将当前经验添加到n步缓冲区
+        self.n_step_buffer.append((state, action, reward, next_state, done))
+        
+        # 如果n步缓冲区未满，不添加到主缓冲区
+        if len(self.n_step_buffer) < self.n_step:
+            return
+        
+        # 计算n步奖励和状态
+        first_state, first_action, n_reward, last_next_state, n_done = self._calculate_n_step_info()
+        
+        # 添加到主缓冲区
+        self.buffer.append((first_state, first_action, n_reward, last_next_state, n_done))
+        
+        # 如果当前经验导致结束，清空n步缓冲区
+        if done:
+            self.n_step_buffer.clear()
     
     def sample(self, batch_size: int) -> List:
         """随机采样经验"""
@@ -76,11 +113,15 @@ class DQNAgent(BaseAgent):
         # 创建优化器
         self.optimizer = optim.Adam(self.q_network.parameters(), lr=0.0001)
         
-        # 创建经验回放缓冲区
-        self.replay_buffer = ReplayBuffer(10000)
+        # 多步学习超参数
+        self.n_step = 3  # n-step学习步数
+        
+        # 创建经验回放缓冲区(支持多步学习)
+        self.replay_buffer = ReplayBuffer(10000, self.n_step, 0.99)
         
         # 超参数
         self.gamma = 0.99  # 折扣因子
+        self.gamma_n = self.gamma ** self.n_step  # n步折扣因子
         self.epsilon = 1.0  # 探索率
         self.epsilon_min = 0.01  # 最小探索率
         self.epsilon_decay = 0.999  # 探索率衰减
@@ -130,10 +171,10 @@ class DQNAgent(BaseAgent):
         # 计算当前Q值
         current_q_values = self.q_network(states_tensor).gather(1, actions_tensor)
         
-        # 计算目标Q值
+        # 计算目标Q值 (使用n步折扣因子)
         with torch.no_grad():
             next_q_values = self.target_network(next_states_tensor).max(1, keepdim=True)[0]
-            target_q_values = rewards_tensor + (1 - dones_tensor) * self.gamma * next_q_values
+            target_q_values = rewards_tensor + (1 - dones_tensor) * self.gamma_n * next_q_values
         
         # 计算损失
         loss = F.smooth_l1_loss(current_q_values, target_q_values)
@@ -284,7 +325,10 @@ class DQNAgent(BaseAgent):
             'target_network': self.target_network.state_dict(),
             'optimizer': self.optimizer.state_dict(),
             'epsilon': self.epsilon,
-            'train_step': self.train_step
+            'train_step': self.train_step,
+            'n_step': self.n_step,
+            'gamma': self.gamma,
+            'gamma_n': self.gamma_n
         }, path)
     
     def load(self, path: str):
@@ -295,6 +339,16 @@ class DQNAgent(BaseAgent):
         self.optimizer.load_state_dict(checkpoint['optimizer'])
         self.epsilon = checkpoint['epsilon']
         self.train_step = checkpoint['train_step']
+        
+        # 加载多步学习参数(兼容旧模型)
+        if 'n_step' in checkpoint:
+            self.n_step = checkpoint['n_step']
+        if 'gamma' in checkpoint:
+            self.gamma = checkpoint['gamma']
+        if 'gamma_n' in checkpoint:
+            self.gamma_n = checkpoint['gamma_n']
+        else:
+            self.gamma_n = self.gamma ** self.n_step
 
 class MultiAgentDQN:
     """多智能体DQN"""
