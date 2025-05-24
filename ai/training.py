@@ -6,7 +6,8 @@ import matplotlib.font_manager as fm
 def plot_training_curves(rewards, losses, win_rates, episode_lengths, 
                          moving_avg_reward=None, moving_avg_loss=None, moving_avg_win_rate=None, 
                          episode=None, expert_agreements=None, moving_avg_expert_agreement=None,
-                         use_expert_guidance=False):
+                         use_expert_guidance=False,
+                         run_timestamp=None):
     """绘制训练曲线
     
     Args:
@@ -21,13 +22,18 @@ def plot_training_curves(rewards, losses, win_rates, episode_lengths,
         expert_agreements: 与专家动作一致率列表
         moving_avg_expert_agreement: 与专家动作一致率移动平均列表
         use_expert_guidance: 是否显示专家策略学习指标
+        run_timestamp: 训练开始的时间戳字符串
     """
     # 设置中文字体
     plt.rcParams['font.sans-serif'] = ['DejaVu Sans']
     plt.rcParams['axes.unicode_minus'] = False
     
-    # 创建输出目录
-    os.makedirs('output', exist_ok=True)
+    # 设置输出目录
+    if run_timestamp:
+        output_dir = os.path.join('output', run_timestamp)
+    else:
+        output_dir = 'output'
+    os.makedirs(output_dir, exist_ok=True)
     
     # 创建图表
     rows = 3 if use_expert_guidance and expert_agreements is not None else 2
@@ -115,15 +121,15 @@ def plot_training_curves(rewards, losses, win_rates, episode_lengths,
     if episode is not None:
         # 如果使用了专家策略，在文件名中标注
         expert_suffix = '_with_expert' if use_expert_guidance else ''
-        plt.savefig(f'output/training_curves_episode_{episode}{expert_suffix}.png')
+        plt.savefig(os.path.join(output_dir, f'training_curves_episode_{episode}{expert_suffix}.png'))
     else:
         expert_suffix = '_with_expert' if use_expert_guidance else ''
-        plt.savefig(f'output/training_curves_final{expert_suffix}.png')
+        plt.savefig(os.path.join(output_dir, f'training_curves_final{expert_suffix}.png'))
     
     # 关闭图表
     plt.close()
 
-def plot_expert_performance_relation(rewards, win_rates, expert_agreements, episode=None, window_size=100):
+def plot_expert_performance_relation(rewards, win_rates, expert_agreements, episode=None, window_size=100, run_timestamp=None):
     """Plot the relationship between expert agreement rate and performance metrics
     
     Args:
@@ -132,6 +138,7 @@ def plot_expert_performance_relation(rewards, win_rates, expert_agreements, epis
         expert_agreements: List of expert action agreement rates for each episode
         episode: Current episode number
         window_size: Window size for moving average calculation
+        run_timestamp: Training run start timestamp string
     """
     # Only used when expert policy learning is enabled
     if expert_agreements is None or len(expert_agreements) == 0:
@@ -188,11 +195,17 @@ def plot_expert_performance_relation(rewards, win_rates, expert_agreements, epis
     
     plt.tight_layout()
     
-    # Save figure
-    os.makedirs('output', exist_ok=True)
-    if episode is not None:
-        plt.savefig(f'output/expert_performance_relation_episode_{episode}.png')
+    # 设置输出目录
+    if run_timestamp:
+        output_dir = os.path.join('output', run_timestamp)
     else:
-        plt.savefig('output/expert_performance_relation_final.png')
+        output_dir = 'output'
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Save figure
+    if episode is not None:
+        plt.savefig(os.path.join(output_dir, f'expert_performance_relation_episode_{episode}.png'))
+    else:
+        plt.savefig(os.path.join(output_dir, f'expert_performance_relation_final.png'))
     
     plt.close()

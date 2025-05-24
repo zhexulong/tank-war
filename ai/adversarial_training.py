@@ -1,6 +1,7 @@
 import os
 import time
 import numpy as np
+from datetime import datetime
 from typing import Dict, List, Tuple, Optional
 from ai.base_agent import BaseAgent
 from ai.agent import DQNAgent
@@ -88,6 +89,17 @@ def train_against_logic(
         expert_reward_init: 初始专家奖励值
         expert_decay_factor: 专家奖励衰减因子 (1.0表示完全按照训练进度线性衰减)
     """
+    # 生成训练运行的时间戳（精确到分钟）
+    run_timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    
+    # 创建模型保存目录
+    model_dir = os.path.join('models', run_timestamp)
+    os.makedirs(model_dir, exist_ok=True)
+    
+    print(f"\n训练开始时间: {run_timestamp}")
+    print(f"模型将保存在: {model_dir}")
+    print(f"训练曲线将保存在: output/{run_timestamp}\n")
+    
     # 创建环境
     env = SimplifiedGameEnv(render_mode='human' if render else None)
     state_shape = {
@@ -288,10 +300,12 @@ def train_against_logic(
                 'expert_reward_init': expert_reward_init,
                 'expert_decay_factor': expert_decay_factor
             }
-            torch.save(checkpoint, f"models/rl_vs_logic_checkpoint_{episode}.pt")
+            # 保存检查点和模型到时间戳目录
+            checkpoint_path = os.path.join(model_dir, f"rl_vs_logic_checkpoint_{episode}.pt")
+            torch.save(checkpoint, checkpoint_path)
             
-            # 保存模型
-            rl_agent.save(f"models/rl_vs_logic_episode_{episode}.pt")
+            model_path = os.path.join(model_dir, f"rl_vs_logic_episode_{episode}.pt")
+            rl_agent.save(model_path)
             
             # 绘制训练曲线
             plot_training_curves(
@@ -302,18 +316,21 @@ def train_against_logic(
                 episode=episode,
                 expert_agreements=expert_agreements.copy(),
                 moving_avg_expert_agreement=moving_avg_expert_agreement.copy(),
-                use_expert_guidance=use_expert_guidance
+                use_expert_guidance=use_expert_guidance,
+                run_timestamp=run_timestamp
             )
             
             # 如果启用了专家策略学习，额外绘制专家一致率与性能关系图
             if use_expert_guidance and len(expert_agreements) > 0:
                 plot_expert_performance_relation(
                     rewards, win_rates, expert_agreements,
-                    episode=episode
+                    episode=episode,
+                    run_timestamp=run_timestamp
                 )
     
-    # 保存最终模型
-    rl_agent.save("models/rl_vs_logic_final.pt")
+    # 保存最终模型到时间戳目录
+    final_model_path = os.path.join(model_dir, "rl_vs_logic_final.pt")
+    rl_agent.save(final_model_path)
     
     # 关闭环境
     env.close()
