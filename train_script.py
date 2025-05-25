@@ -20,6 +20,10 @@ def main():
     parser.add_argument('--expert-decay', type=float, default=1.0, 
                         help='专家奖励衰减因子 (1.0表示完全按训练进度线性衰减，0表示不衰减)')
     
+    # 并行采样参数
+    parser.add_argument('--num-workers', type=int, default=1, help='并行采样的工作者数量 (默认为1，即不并行)')
+    parser.add_argument('--log-worker-actions', action='store_true', help='是否打印首个worker/主进程的详细专家匹配动作日志')
+    
     # 解析命令行参数
     args = parser.parse_args()
     
@@ -29,6 +33,8 @@ def main():
     print(f"模型保存间隔: {args.save_interval}")
     print(f"渲染游戏画面: {args.render}")
     print(f"检查点文件: {args.checkpoint if args.checkpoint else '无'}")
+    print(f"并行工作者数量: {args.num_workers}")
+    print(f"记录Worker动作日志: {args.log_worker_actions}")
     
     if args.use_expert:
         print("\n===== 专家策略学习配置 =====")
@@ -48,7 +54,9 @@ def main():
         checkpoint_path=args.checkpoint,
         use_expert_guidance=args.use_expert,
         expert_reward_init=args.expert_reward,
-        expert_decay_factor=args.expert_decay
+        expert_decay_factor=args.expert_decay,
+        num_workers=args.num_workers,
+        log_worker_actions=args.log_worker_actions
     )
     print("训练完成！")
 

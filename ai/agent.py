@@ -27,9 +27,11 @@ class DQNNetwork(nn.Module):
             nn.ReLU(),
             nn.Linear(384, 256),
             nn.ReLU(),
-            nn.Linear(256, 128),
+            nn.Linear(256, 256),
             nn.ReLU(),
-            nn.Linear(128, output_dim)
+            nn.Linear(256, 64),
+            nn.ReLU(),
+            nn.Linear(64, output_dim)
         )
     
     def forward(self, x: Dict) -> torch.Tensor:

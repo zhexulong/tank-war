@@ -10,6 +10,8 @@ from ai.environment import TankBattleEnv
 from ai.simplified_env import SimplifiedGameEnv
 from ai.training import plot_training_curves, plot_expert_performance_relation
 import torch
+import io
+import multiprocessing
 
 def _action_to_str_dqn(action: int) -> str:
     """DQN动作ID转字符串描述
@@ -69,6 +71,87 @@ def _calculate_expert_reward(episode: int, total_episodes: int, initial_reward: 
     
     return current_reward
 
+MAX_STEPS_PER_EPISODE_WORKER = 1500 # Max steps per episode in a worker to prevent deadlocks
+
+def worker_collect_episode_data(args_bundle):
+    """
+    工作者函数，用于收集一个回合的经验数据。
+    """
+    (worker_id, q_network_state_dict_bytes, state_shape, action_dim,
+     current_epsilon, use_expert, expert_reward_init_val, expert_decay_factor_val,
+     current_episode_num, total_episodes_num, render_in_worker,
+     log_actions_in_worker) = args_bundle
+
+    env_render_mode = 'human' if render_in_worker else None
+    env = SimplifiedGameEnv(render_mode=env_render_mode)
+    
+    # 工作者通常在CPU上进行推理，以避免多进程CUDA问题
+    rl_agent_worker = DQNAgent(state_shape, action_dim, device='cpu')
+    if q_network_state_dict_bytes:
+        buffer = io.BytesIO(q_network_state_dict_bytes)
+        rl_agent_worker.q_network.load_state_dict(torch.load(buffer, map_location='cpu'))
+    rl_agent_worker.epsilon = current_epsilon # Set worker's epsilon
+
+    expert_agent_worker = LogicExpertAgent()
+    logic_agent_opponent_worker = LogicAgent() # Opponent
+
+    experiences = []
+    state = env.reset()
+    
+    episode_reward_val = 0
+    episode_steps_val = 0
+    expert_agreements_val = 0
+    done_val = False
+    win_val = False
+
+    while not done_val and episode_steps_val < MAX_STEPS_PER_EPISODE_WORKER:
+        rl_action = rl_agent_worker.select_action(state, training=True)
+        logic_action_opponent = logic_agent_opponent_worker.select_action(state) # Opponent's action
+
+        # 专家指导逻辑
+        step_expert_reward = 0
+        matched_expert = False
+        if use_expert:
+            expert_action = expert_agent_worker.select_action(state)
+            # 假设的动作映射和匹配逻辑 (与原train_against_logic中类似)
+            # RL: 0-stay, 1-fwd, 2-bwd, 3-left, 4-right, 5-fire
+            # Expert: 0-stay, 1-fwd, 2-left, 3-right, 4-fire
+            action_map_rl_to_expert = {0:0, 1:1, 3:2, 4:3, 5:4} # RL后退(2)无匹配
+            if rl_action in action_map_rl_to_expert and action_map_rl_to_expert[rl_action] == expert_action:
+                matched_expert = True
+                expert_agreements_val += 1
+                current_expert_value = _calculate_expert_reward(current_episode_num, total_episodes_num, expert_reward_init_val, expert_decay_factor_val)
+                step_expert_reward = current_expert_value
+            
+            if log_actions_in_worker and worker_id == 0 : # Log only for worker 0 if enabled
+                print(f"  Worker {worker_id} Ep {current_episode_num} Step {episode_steps_val + 1}: RL act: {_action_to_str_dqn(rl_action)}, Exp act: {_action_to_str_logic(expert_action)}, Match: {matched_expert}, Exp Rew: {step_expert_reward:.2f}")
+
+
+        next_state, step_rewards, done_val, info = env.step([rl_action, logic_action_opponent])
+        
+        final_reward_for_rl = step_rewards[0] + step_expert_reward # RL is player 1
+        
+        experiences.append((state, rl_action, final_reward_for_rl, next_state, done_val))
+        
+        state = next_state
+        episode_reward_val += final_reward_for_rl
+        episode_steps_val += 1
+
+    if episode_steps_val >= MAX_STEPS_PER_EPISODE_WORKER:
+        print(f"Warning: Worker {worker_id} Ep {current_episode_num} reached max steps {MAX_STEPS_PER_EPISODE_WORKER}.")
+        # If max steps reached, ensure 'done' is true for the experience
+        if experiences:
+            s, a, r, ns, _ = experiences[-1]
+            experiences[-1] = (s, a, r, ns, True)
+
+
+    win_val = info.get('winner', 0) == 1 # RL智能体是玩家1
+    expert_agreement_rate_val = expert_agreements_val / max(1, episode_steps_val) if use_expert else 0.0
+    
+    env.close()
+    return experiences, episode_reward_val, win_val, episode_steps_val, expert_agreement_rate_val, current_episode_num
+
+
 def train_against_logic(
     episodes: int = 1000, 
     save_interval: int = 100, 
@@ -76,7 +159,9 @@ def train_against_logic(
     checkpoint_path: str = None,
     use_expert_guidance: bool = False,
     expert_reward_init: float = 100.0,
-    expert_decay_factor: float = 1.0
+    expert_decay_factor: float = 1.0,
+    num_workers: int = 1, # 新增并行工作者数量参数
+    log_worker_actions: bool = False # 新增: 是否打印首个worker的详细动作日志
 ):
     """训练RL智能体对抗Logic智能体
     
@@ -100,17 +185,30 @@ def train_against_logic(
     print(f"模型将保存在: {model_dir}")
     print(f"训练曲线将保存在: output/{run_timestamp}\n")
     
-    # 创建环境
-    env = SimplifiedGameEnv(render_mode='human' if render else None)
+    # 创建环境 (主进程的环境仅用于获取参数或单进程模式)
+    if num_workers <= 1: # Or if render is True and num_workers > 1, main env might be needed for rendering
+        env = SimplifiedGameEnv(render_mode='human' if render else None)
+    else: # In parallel mode, create a temporary env to get params
+        temp_env_for_params = SimplifiedGameEnv(render_mode=None)
+        env = temp_env_for_params # Assign to env for later parameter extraction, will be closed.
+
     state_shape = {
         'map': env.observation_space['map'],
         'tanks': env.observation_space['tanks'],
         'bullets': env.observation_space['bullets']
     }
     action_dim = env.action_space.n
+    
+    if num_workers > 1 and not (render and num_workers > 1) : # Close temp env if it was created
+         if 'temp_env_for_params' in locals() and temp_env_for_params is env :
+              env.close() # Close the temporary env
+              env = None # Set env to None as workers will handle their own
+
     rl_agent = DQNAgent(state_shape, action_dim)
-    logic_agent = LogicAgent()  # 作为对手智能体
-    expert_agent = LogicExpertAgent()  # 作为专家智能体
+    # logic_agent and expert_agent are instantiated in workers if num_workers > 1
+    if num_workers <= 1:
+        logic_agent = LogicAgent()
+        expert_agent = LogicExpertAgent()
     
     # 创建保存目录
     os.makedirs('models', exist_ok=True)
@@ -157,183 +255,258 @@ def train_against_logic(
         print(f"加载检查点：{checkpoint_path}，从第{start_episode}轮继续训练")
     
     # 训练循环
-    for episode in range(start_episode, episodes + 1):
-        # 重置环境
-        state = env.reset()
-        episode_reward = 0
-        episode_loss = 0
-        episode_step = 0
-        expert_agreement_count = 0  # 记录本回合与专家动作一致的次数
-        done = False
-        
-        # 单局游戏循环
-        while not done:
-            # RL智能体选择动作（player_id=0）
-            rl_action = rl_agent.select_action(state)
+    if num_workers <= 1:
+        # Original single-process training loop
+        for episode in range(start_episode, episodes + 1):
+            # 重置环境
+            state = env.reset()
+            episode_reward = 0
+            episode_loss_sum = 0 # Sum of losses in the episode
+            episode_step = 0
+            expert_agreement_count = 0
+            done = False
             
-            # 专家智能体从RL智能体视角选择动作（提供专家建议）
-            expert_action = expert_agent.select_action(state)
-            
-            # 对手Logic智能体选择动作（player_id=1，用于实际游戏）
-            logic_action = logic_agent.select_action(state)
-            
-            # 记录决策过程（用于调试）
-            if episode % 100 == 0 and episode_step < 5:  # 每100回合的前5步骤记录详情
-                print(f"\n[回合 {episode}, 步骤 {episode_step}] 决策详情:")
-                print(f"- RL智能体选择动作: {rl_action} ({_action_to_str_dqn(rl_action)})")
-                print(f"- 专家建议动作: {expert_action} ({_action_to_str_logic(expert_action)})")
-                print(f"- 对手动作: {logic_action} ({_action_to_str_logic(logic_action)})")
-            
-            # 应用专家策略学习
-            current_expert_reward = 0.0
-            if use_expert_guidance:
-                # 计算当前专家奖励值（根据训练进度衰减）
-                current_expert_reward = _calculate_expert_reward(
-                    episode=episode, 
-                    total_episodes=episodes,
-                    initial_reward=expert_reward_init,
-                    decay_factor=expert_decay_factor
-                )
+            current_expert_reward_value = _calculate_expert_reward(episode, episodes, expert_reward_init, expert_decay_factor)
+
+            while not done and episode_step < MAX_STEPS_PER_EPISODE_WORKER : # Added max step protection
+                # RL智能体动作
+                rl_action = rl_agent.select_action(state, training=True)
                 
-                # 动作空间映射：
-                # DQNAgent: 0-stay, 1-forward, 2-backward, 3-left, 4-right, 5-fire
-                # LogicAgent: 0-stay, 1-forward, 2-turn_left, 3-turn_right, 4-fire
+                # 对手智能体动作
+                logic_action = logic_agent.select_action(state)
                 
-                # 将RL动作映射到专家动作空间进行比较
-                matched = False
-                if rl_action == 0 and expert_action == 0:  # stay = stay
-                    matched = True
-                elif rl_action == 1 and expert_action == 1:  # forward = forward
-                    matched = True
-                elif rl_action == 3 and expert_action == 2:  # left = turn_left
-                    matched = True
-                elif rl_action == 4 and expert_action == 3:  # right = turn_right
-                    matched = True
-                elif rl_action == 5 and expert_action == 4:  # fire = fire
-                    matched = True
-                
-                # 后退动作(2)在专家动作空间中不存在，永远不会匹配
-                
-                # 检查RL智能体的动作是否与专家建议一致
-                if matched:
-                    expert_agreement_count += 1  # 记录一致性
-                else:
-                    current_expert_reward = 0.0  # 不一致时不给奖励
+                # 专家指导
+                step_expert_reward = 0
+                matched_expert = False
+                if use_expert_guidance:
+                    expert_action = expert_agent.select_action(state)
+                    # 动作映射: RL到专家 (0:0, 1:1, 3:2, 4:3, 5:4)
+                    action_map_rl_to_expert = {0:0, 1:1, 3:2, 4:3, 5:4}
+                    if rl_action in action_map_rl_to_expert and action_map_rl_to_expert[rl_action] == expert_action:
+                        matched_expert = True
+                        expert_agreement_count += 1
+                        step_expert_reward = current_expert_reward_value # 使用当前回合计算的专家奖励值
                     
-                if episode % 100 == 0 and episode_step < 5:  # 每100回合的前5步骤记录详情
-                    print(f"- 动作一致性: {'匹配' if matched else '不匹配'}")
-                    print(f"- 专家奖励: {current_expert_reward:.4f}")
+                    if log_worker_actions: # For single worker, this acts as main log
+                         print(f"  Main Ep {episode} Step {episode_step + 1}: RL act: {_action_to_str_dqn(rl_action)}, Exp act: {_action_to_str_logic(expert_action)}, Match: {matched_expert}, Exp Rew: {step_expert_reward:.2f}")
+
+
+                # 执行动作
+                next_state, step_rewards, done, info = env.step([rl_action, logic_action])
+                
+                # 计算最终奖励 (RL智能体是玩家1)
+                final_reward = step_rewards[0] + step_expert_reward
+                
+                # 存储经验
+                rl_agent.replay_buffer.push(state, rl_action, final_reward, next_state, done)
+                
+                # 更新状态和奖励
+                state = next_state
+                episode_reward += final_reward
+                episode_step += 1
+                
+                # 训练RL智能体
+                loss = rl_agent.train()
+                if loss is not None:
+                    episode_loss_sum += loss
             
-            # 执行动作
-            next_state, step_rewards, done, info = env.step([rl_action, logic_action])
+            if episode_step >= MAX_STEPS_PER_EPISODE_WORKER:
+                print(f"Warning: Main Ep {episode} reached max steps {MAX_STEPS_PER_EPISODE_WORKER}.")
+
+
+            # 记录训练数据
+            rewards.append(episode_reward)
+            losses.append(episode_loss_sum / max(1, episode_step)) # Average loss for the episode
+            win = info.get('winner', 0) == 1
+            win_rates.append(1 if win else 0)
+            episode_lengths.append(episode_step)
             
-            # 应用专家奖励（如果有）
-            step_rewards = list(step_rewards)  # 转为列表以便修改
-            step_rewards[0] += current_expert_reward  # 添加专家策略奖励
+            expert_agreement_rate = expert_agreement_count / max(1, episode_step) if use_expert_guidance else 0.0
+            expert_agreements.append(expert_agreement_rate)
             
-            # 存储RL智能体的经验
-            rl_agent.replay_buffer.push(state, rl_action, step_rewards[0], next_state, done)
+            # 打印训练信息
+            expert_info_str = ""
+            if use_expert_guidance:
+                expert_info_str = f", ExpAgree: {expert_agreement_rate:.2%}, ExpRewVal: {current_expert_reward_value:.2f}"
             
-            # 训练RL智能体
-            loss = rl_agent.train()
-            if loss is not None:
-                episode_loss += loss
+            print(f"Episode {episode}/{episodes}, Reward: {episode_reward:.2f}, AvgLoss: {losses[-1]:.4f}, "
+                  f"Win: {win}, Steps: {episode_step}, Epsilon: {rl_agent.epsilon:.4f}{expert_info_str}")
+
+            # 计算移动平均
+            current_window_size = min(len(rewards), window_size)
+            if current_window_size > 0:
+                moving_avg_reward.append(np.mean(rewards[-current_window_size:]))
+                moving_avg_loss.append(np.mean(losses[-current_window_size:]))
+                moving_avg_win_rate.append(np.mean(win_rates[-current_window_size:]))
+                if use_expert_guidance:
+                    moving_avg_expert_agreement.append(np.mean(expert_agreements[-current_window_size:]))
             
-            # 更新状态和奖励
-            state = next_state
-            episode_reward += step_rewards[0]  # 只记录RL智能体的奖励（包含专家策略奖励）
-            episode_step += 1
-            
-            # 渲染
-            if render:
-                env.render()
-                time.sleep(0.01)
-        
-        # 记录训练数据
-        rewards.append(episode_reward)
-        losses.append(episode_loss / max(1, episode_step))
-        win = info.get('winner', 0) == 1  # RL智能体是玩家1
-        win_rates.append(1 if win else 0)
-        episode_lengths.append(episode_step)
-        
-        # 计算与专家动作的一致性
-        expert_agreement_rate = expert_agreement_count / max(1, episode_step)
-        expert_agreements.append(expert_agreement_rate)
-        
-        # 打印训练信息
-        expert_info = ""
-        if use_expert_guidance:
-            progress_ratio = min(1.0, (episode - 1) / episodes)
-            current_expert_reward = expert_reward_init * max(0.0, 1.0 - progress_ratio * expert_decay_factor)
-            expert_agreement_rate = expert_agreement_count / max(1, episode_step)
-            expert_info = f", Expert reward: {current_expert_reward:.4f}, Agreement: {expert_agreement_rate:.2%}"
-            
-        print(f"Episode {episode}/{episodes}, Reward: {episode_reward:.2f}, Loss: {episode_loss/max(1, episode_step):.4f}, "  
-              f"Win: {win}, Steps: {episode_step}, Epsilon: {rl_agent.epsilon:.4f}{expert_info}")
-        
-        # 计算移动平均（使用可用的所有数据，最多window_size个）
-        current_window_size = min(len(rewards), window_size)
-        if current_window_size > 0:
-            moving_avg_reward.append(np.mean(rewards[-current_window_size:]))
-            moving_avg_loss.append(np.mean(losses[-current_window_size:]))
-            moving_avg_win_rate.append(np.mean(win_rates[-current_window_size:]))
-            moving_avg_expert_agreement.append(np.mean(expert_agreements[-current_window_size:]))
-        
-        # 保存检查点和模型
-        if episode % save_interval == 0:
-            # 保存检查点
-            checkpoint = {
-                'episode': episode,
-                'model_state_dict': rl_agent.q_network.state_dict(),
-                'optimizer_state_dict': rl_agent.optimizer.state_dict(),
-                'rewards': rewards,
-                'losses': losses,
-                'win_rates': win_rates,
-                'episode_lengths': episode_lengths,
-                'expert_agreements': expert_agreements,
-                'moving_avg_reward': moving_avg_reward,
-                'moving_avg_loss': moving_avg_loss,
-                'moving_avg_win_rate': moving_avg_win_rate,
-                'moving_avg_expert_agreement': moving_avg_expert_agreement,
-                # 保存专家策略学习的配置
-                'use_expert_guidance': use_expert_guidance,
-                'expert_reward_init': expert_reward_init,
-                'expert_decay_factor': expert_decay_factor
-            }
-            # 保存检查点和模型到时间戳目录
-            checkpoint_path = os.path.join(model_dir, f"rl_vs_logic_checkpoint_{episode}.pt")
-            torch.save(checkpoint, checkpoint_path)
-            
-            model_path = os.path.join(model_dir, f"rl_vs_logic_episode_{episode}.pt")
-            rl_agent.save(model_path)
-            
-            # 绘制训练曲线
-            plot_training_curves(
-                rewards, losses, win_rates, episode_lengths,
-                moving_avg_reward=moving_avg_reward.copy(), 
-                moving_avg_loss=moving_avg_loss.copy(), 
-                moving_avg_win_rate=moving_avg_win_rate.copy(),
-                episode=episode,
-                expert_agreements=expert_agreements.copy(),
-                moving_avg_expert_agreement=moving_avg_expert_agreement.copy(),
-                use_expert_guidance=use_expert_guidance,
-                run_timestamp=run_timestamp
-            )
-            
-            # 如果启用了专家策略学习，额外绘制专家一致率与性能关系图
-            if use_expert_guidance and len(expert_agreements) > 0:
-                plot_expert_performance_relation(
-                    rewards, win_rates, expert_agreements,
-                    episode=episode,
-                    run_timestamp=run_timestamp
+            if episode % save_interval == 0:
+                checkpoint_data = {
+                    'episode': episode,
+                    'model_state_dict': rl_agent.q_network.state_dict(),
+                    'optimizer_state_dict': rl_agent.optimizer.state_dict(),
+                    'rewards': rewards,
+                    'losses': losses,
+                    'win_rates': win_rates,
+                    'episode_lengths': episode_lengths,
+                    'expert_agreements': expert_agreements,
+                    'moving_avg_reward': moving_avg_reward,
+                    'moving_avg_loss': moving_avg_loss,
+                    'moving_avg_win_rate': moving_avg_win_rate,
+                    'moving_avg_expert_agreement': moving_avg_expert_agreement,
+                    'epsilon': rl_agent.epsilon,
+                    'use_expert_guidance': use_expert_guidance,
+                    'expert_reward_init': expert_reward_init,
+                    'expert_decay_factor': expert_decay_factor
+                }
+                chkpt_path = os.path.join(model_dir, f"rl_vs_logic_checkpoint_{episode}.pt")
+                torch.save(checkpoint_data, chkpt_path)
+                print(f"已保存检查点到: {chkpt_path}")
+
+                # 定期绘制训练曲线图
+                plot_training_curves(
+                    rewards, losses, win_rates, episode_lengths,
+                    moving_avg_reward, moving_avg_loss, moving_avg_win_rate,
+                    episode, expert_agreements, moving_avg_expert_agreement,
+                    use_expert_guidance, run_timestamp
                 )
-    
+                if use_expert_guidance:
+                    plot_expert_performance_relation(
+                        rewards, win_rates, expert_agreements, episode, run_timestamp=run_timestamp
+                    )
+    else: # Parallel training loop using multiprocessing
+        # Ensure 'spawn' start method for better compatibility, especially on Windows with Pygame
+        # However, 'fork' (default on Linux) is generally more efficient if it works.
+        # For simplicity here, we'll use the default, but consider get_context('spawn') if issues arise.
+        # import multiprocessing as mp
+        # ctx = mp.get_context('spawn') # Example for spawn context
+        
+        processed_episodes_count = start_episode - 1 # Initialize before the loop
+
+        with multiprocessing.Pool(processes=num_workers) as pool:
+            while processed_episodes_count < episodes:
+                num_episodes_to_run_in_batch = min(num_workers, episodes - processed_episodes_count)
+                if num_episodes_to_run_in_batch <= 0:
+                    break
+
+                q_network_state_dict_bytes = None
+                if rl_agent.q_network:
+                    buffer = io.BytesIO()
+                    torch.save(rl_agent.q_network.state_dict(), buffer)
+                    q_network_state_dict_bytes = buffer.getvalue()
+
+                tasks_args = []
+                for i in range(num_episodes_to_run_in_batch):
+                    current_global_episode_num = processed_episodes_count + 1 + i
+                    render_for_this_worker = render and i == 0 
+
+                    tasks_args.append((
+                        i, q_network_state_dict_bytes, state_shape, action_dim,
+                        rl_agent.epsilon, use_expert_guidance, expert_reward_init, expert_decay_factor,
+                        current_global_episode_num, episodes, render_for_this_worker,
+                        log_worker_actions
+                    ))
+                
+                batch_results = pool.map(worker_collect_episode_data, tasks_args)
+                
+
+                for experiences_list, ep_reward, ep_win, ep_steps, ep_expert_agree_rate, actual_ep_num_returned in batch_results:
+                    processed_episodes_count = actual_ep_num_returned 
+
+                    for exp in experiences_list:
+                        rl_agent.replay_buffer.push(*exp)
+                    
+                    loss_item = rl_agent.train() 
+                    
+                    # Append per-episode metrics
+                    rewards.append(ep_reward)
+                    win_rates.append(1 if ep_win else 0)
+                    episode_lengths.append(ep_steps)
+                    
+                    if use_expert_guidance:
+                        expert_agreements.append(ep_expert_agree_rate)
+                    else:
+                        expert_agreements.append(0.0) # Keep length consistent
+
+                    if loss_item is not None:
+                        losses.append(loss_item)
+                    elif losses: 
+                        losses.append(losses[-1]) # Append previous loss if current is None
+                    else:
+                        losses.append(0) # Append 0 if losses list is empty and current loss is None
+
+                    # Calculate and append moving averages for THIS episode
+                    current_idx = len(rewards) - 1 
+                    window_start_idx = max(0, current_idx - window_size + 1)
+
+                    moving_avg_reward.append(np.mean(rewards[window_start_idx : current_idx + 1]))
+                    moving_avg_loss.append(np.mean(losses[window_start_idx : current_idx + 1]))
+                    moving_avg_win_rate.append(np.mean(win_rates[window_start_idx : current_idx + 1]))
+                    
+                    if use_expert_guidance:
+                        moving_avg_expert_agreement.append(np.mean(expert_agreements[window_start_idx : current_idx + 1]))
+                    elif moving_avg_expert_agreement: 
+                        moving_avg_expert_agreement.append(moving_avg_expert_agreement[-1]) 
+                    else: 
+                        moving_avg_expert_agreement.append(0)
+
+                    current_expert_reward_value_parallel = _calculate_expert_reward(actual_ep_num_returned, episodes, expert_reward_init, expert_decay_factor)
+                    expert_info_str_parallel = ""
+                    if use_expert_guidance:
+                         expert_info_str_parallel = f", ExpAgree: {ep_expert_agree_rate:.2%}, ExpRewVal: {current_expert_reward_value_parallel:.2f}"
+
+                    print(f"Worker (Ep {actual_ep_num_returned}) finished. Reward: {ep_reward:.2f}, "
+                          f"Win: {ep_win}, Steps: {ep_steps}, Epsilon: {rl_agent.epsilon:.4f}{expert_info_str_parallel}")
+
+                if processed_episodes_count // save_interval > (start_episode -1 + len(batch_results) - num_episodes_to_run_in_batch) // save_interval or processed_episodes_count == episodes :
+                    # This condition means a save_interval boundary was crossed in this batch
+                    # Or it's the very last episode.
+                    # We use processed_episodes_count for the checkpoint name as it's the latest completed episode.
+                    checkpoint_data = {
+                        'episode': processed_episodes_count, # Save with the number of the last processed episode
+                        'model_state_dict': rl_agent.q_network.state_dict(),
+                        'optimizer_state_dict': rl_agent.optimizer.state_dict(),
+                        'rewards': rewards,
+                        'losses': losses,
+                        'win_rates': win_rates,
+                        'episode_lengths': episode_lengths,
+                        'expert_agreements': expert_agreements,
+                        'moving_avg_reward': moving_avg_reward,
+                        'moving_avg_loss': moving_avg_loss,
+                        'moving_avg_win_rate': moving_avg_win_rate,
+                        'moving_avg_expert_agreement': moving_avg_expert_agreement,
+                        'epsilon': rl_agent.epsilon,
+                        'use_expert_guidance': use_expert_guidance,
+                        'expert_reward_init': expert_reward_init,
+                        'expert_decay_factor': expert_decay_factor
+                    }
+                    chkpt_path = os.path.join(model_dir, f"rl_vs_logic_checkpoint_{processed_episodes_count}.pt")
+                    torch.save(checkpoint_data, chkpt_path)
+                    print(f"已保存检查点到: {chkpt_path} (after episode {processed_episodes_count})")
+
+                    plot_training_curves(
+                        rewards, losses, win_rates, episode_lengths,
+                        moving_avg_reward, moving_avg_loss, moving_avg_win_rate,
+                        processed_episodes_count, expert_agreements, moving_avg_expert_agreement,
+                        use_expert_guidance, run_timestamp
+                    )
+                    if use_expert_guidance:
+                        plot_expert_performance_relation(
+                            rewards, win_rates, expert_agreements, processed_episodes_count, run_timestamp=run_timestamp
+                        )
+                if processed_episodes_count >= episodes:
+                    break
+
+
     # 保存最终模型到时间戳目录
     final_model_path = os.path.join(model_dir, "rl_vs_logic_final.pt")
     rl_agent.save(final_model_path)
+    print(f"最终模型已保存到: {final_model_path}")
     
-    # 关闭环境
-    env.close()
+    # 关闭主环境（如果已创建且未使用temp env logic）
+    if env: # env might be None if num_workers > 1 and not render
+        env.close()
     # 输出最终训练结果摘要
     if len(moving_avg_reward) > 0:
         print(f"\n===== 训练结果摘要 =====")
@@ -368,14 +541,15 @@ def train_against_logic(
             print(f"策略发展分析: 智能体与专家策略的一致率相对稳定 ({avg_early:.2%} → {avg_late:.2%})")
     
     # 绘制最终训练曲线
+    final_episode_count_for_plot = episodes if num_workers <=1 else processed_episodes_count
     plot_training_curves(
         rewards, losses, win_rates, episode_lengths,
-        moving_avg_reward=moving_avg_reward.copy(), 
-        moving_avg_loss=moving_avg_loss.copy(), 
-        moving_avg_win_rate=moving_avg_win_rate.copy(), 
-        episode=episodes,
-        expert_agreements=expert_agreements.copy(),
-        moving_avg_expert_agreement=moving_avg_expert_agreement.copy(),
+        moving_avg_reward=moving_avg_reward, # Pass the list directly
+        moving_avg_loss=moving_avg_loss, 
+        moving_avg_win_rate=moving_avg_win_rate, 
+        episode=final_episode_count_for_plot, # Use actual number of processed episodes
+        expert_agreements=expert_agreements,
+        moving_avg_expert_agreement=moving_avg_expert_agreement,
         use_expert_guidance=use_expert_guidance,
         run_timestamp=run_timestamp
     )
@@ -383,9 +557,7 @@ def train_against_logic(
     # 如果启用了专家策略学习，额外绘制最终的专家一致率与性能关系图
     if use_expert_guidance and len(expert_agreements) > 0:
         plot_expert_performance_relation(
-            rewards, win_rates, expert_agreements,
-            episode=episodes,
-            run_timestamp=run_timestamp
+            rewards, win_rates, expert_agreements, final_episode_count_for_plot, run_timestamp=run_timestamp
         )
     
     return rl_agent
