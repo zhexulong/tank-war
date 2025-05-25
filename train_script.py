@@ -16,7 +16,7 @@ def main():
     expert_group.add_argument('--use-expert', action='store_true', help='使用专家策略学习')
     expert_group.add_argument('--no-expert', action='store_false', dest='use_expert', help='不使用专家策略学习')
     parser.set_defaults(use_expert=True)
-    parser.add_argument('--expert-reward', type=float, default=50.0, help='初始专家奖励值')
+    parser.add_argument('--expert-reward', type=float, default=1.0, help='初始专家奖励值')
     parser.add_argument('--expert-decay', type=float, default=1.0, 
                         help='专家奖励衰减因子 (1.0表示完全按训练进度线性衰减，0表示不衰减)')
     

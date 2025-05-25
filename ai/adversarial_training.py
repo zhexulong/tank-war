@@ -376,14 +376,16 @@ def train_against_logic(
         episode=episodes,
         expert_agreements=expert_agreements.copy(),
         moving_avg_expert_agreement=moving_avg_expert_agreement.copy(),
-        use_expert_guidance=use_expert_guidance
+        use_expert_guidance=use_expert_guidance,
+        run_timestamp=run_timestamp
     )
     
     # 如果启用了专家策略学习，额外绘制最终的专家一致率与性能关系图
     if use_expert_guidance and len(expert_agreements) > 0:
         plot_expert_performance_relation(
             rewards, win_rates, expert_agreements,
-            episode=episodes
+            episode=episodes,
+            run_timestamp=run_timestamp
         )
     
     return rl_agent

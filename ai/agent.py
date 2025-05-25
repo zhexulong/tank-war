@@ -126,7 +126,7 @@ class DQNAgent(BaseAgent):
         self.epsilon_min = 0.01  # 最小探索率
         self.epsilon_decay = 0.999  # 探索率衰减
         self.target_update = 100  # 目标网络更新频率
-        self.batch_size = 64  # 批量大小
+        self.batch_size = 256  # 批量大小
         
         # 训练步数
         self.train_step = 0
