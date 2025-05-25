@@ -16,12 +16,22 @@ class SimplifiedAIInterface:
             agent = LogicAgent()
         else:  # dqn
             from ai.agent import DQNAgent
+            import torch
+            import multiprocessing
             
             # 从游戏获取状态空间定义
             state_shape = self.game_manager.get_state_shape()
             action_dim = 6  # 不动/前进/后退/左转/右转/开火
             
-            agent = DQNAgent(state_shape, action_dim)
+            # 检测是否在子进程中运行
+            if multiprocessing.current_process().name != 'MainProcess':
+                # 工作进程中，强制使用CPU
+                device = 'cpu'
+            else:
+                # 主进程中，如果可用则使用GPU
+                device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            
+            agent = DQNAgent(state_shape, action_dim, device=device)
             if agent_path:
                 agent.load(agent_path)
         

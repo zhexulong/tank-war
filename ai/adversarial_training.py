@@ -85,11 +85,15 @@ def worker_collect_episode_data(args_bundle):
     env_render_mode = 'human' if render_in_worker else None
     env = SimplifiedGameEnv(render_mode=env_render_mode)
     
-    # 工作者通常在CPU上进行推理，以避免多进程CUDA问题
-    rl_agent_worker = DQNAgent(state_shape, action_dim, device='cpu')
+    # 工作进程始终使用CPU
+    device = 'cpu'
+    rl_agent_worker = DQNAgent(state_shape, action_dim, device=device)
     if q_network_state_dict_bytes:
         buffer = io.BytesIO(q_network_state_dict_bytes)
-        rl_agent_worker.q_network.load_state_dict(torch.load(buffer, map_location='cpu'))
+        # 确保从GPU加载的状态字典被映射到CPU
+        rl_agent_worker.q_network.load_state_dict(
+            torch.load(buffer, map_location=device)
+        )
     rl_agent_worker.epsilon = current_epsilon # Set worker's epsilon
 
     expert_agent_worker = LogicExpertAgent()
@@ -204,11 +208,16 @@ def train_against_logic(
               env.close() # Close the temporary env
               env = None # Set env to None as workers will handle their own
 
-    rl_agent = DQNAgent(state_shape, action_dim)
+    # 主进程的DQNAgent在GPU上创建（如果可用）
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    rl_agent = DQNAgent(state_shape, action_dim, device=device)
     # logic_agent and expert_agent are instantiated in workers if num_workers > 1
     if num_workers <= 1:
         logic_agent = LogicAgent()
         expert_agent = LogicExpertAgent()
+    
+    # Print device information
+    print(f"Main process using device: {device}")
     
     # 创建保存目录
     os.makedirs('models', exist_ok=True)
