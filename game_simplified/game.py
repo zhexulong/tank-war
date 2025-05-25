@@ -60,7 +60,7 @@ class SimplifiedTank:
 
 class SimplifiedGame:
     def __init__(self, ai_opponent=False, ai_type='dqn', second_ai_type=None, render_mode=None, agent_path=None):
-        pygame.init()
+        # pygame.init()  # 不再无条件初始化pygame
         
         # 游戏常量
         self.GRID_SIZE = 10  # 每个格子的像素大小
@@ -73,12 +73,13 @@ class SimplifiedGame:
         # 渲染模式
         self.render_mode = render_mode
         
-        # 初始化屏幕（仅在需要渲染时）
+        # pygame初始化和屏幕设置 (仅在需要渲染时)
+        self.screen = None
         if self.render_mode == 'human':
+            # 仅在渲染模式为human时初始化pygame
+            pygame.init()
             self.screen = pygame.display.set_mode((self.SCREEN_SIZE, self.SCREEN_SIZE))
             pygame.display.set_caption('简化版坦克大战')
-        else:
-            self.screen = None
         
         # 颜色定义
         self.BLACK = (0, 0, 0)
@@ -343,6 +344,9 @@ class SimplifiedGame:
         self.bullets = new_bullets
     
     def draw_tank(self, tank, color):
+        if self.render_mode != 'human' or self.screen is None:
+            return  # 如果不需要渲染或屏幕未初始化，直接返回
+            
         # 绘制坦克主体
         tank_rect = pygame.Rect(
             tank.position[0] * self.GRID_SIZE,
@@ -365,53 +369,45 @@ class SimplifiedGame:
             pygame.draw.line(self.screen, color, (center_x, center_y), (center_x - self.GRID_SIZE, center_y))
     
     def draw(self):
+        """绘制游戏状态"""
         if self.render_mode != 'human' or self.screen is None:
-            return
+            return  # 如果不需要渲染或屏幕未初始化，直接返回
             
+        # 填充背景
         self.screen.fill(self.BLACK)
         
-        # 绘制网格
-        for x in range(0, self.SCREEN_SIZE, self.GRID_SIZE):
-            pygame.draw.line(self.screen, self.GRAY, (x, 0), (x, self.SCREEN_SIZE))
-        for y in range(0, self.SCREEN_SIZE, self.GRID_SIZE):
-            pygame.draw.line(self.screen, self.GRAY, (0, y), (self.SCREEN_SIZE, y))
+        # 绘制地图
+        for x in range(self.MAP_SIZE):
+            for y in range(self.MAP_SIZE):
+                if self.current_map.is_obstacle(x, y):
+                    # 绘制障碍物
+                    obstacle_rect = pygame.Rect(
+                        x * self.GRID_SIZE,
+                        y * self.GRID_SIZE,
+                        self.GRID_SIZE,
+                        self.GRID_SIZE
+                    )
+                    pygame.draw.rect(self.screen, self.GRAY, obstacle_rect)
         
-        # 绘制障碍物
-        for obs in self.current_map.obstacles:
-            obs_rect = pygame.Rect(
-                obs[0] * self.GRID_SIZE,
-                obs[1] * self.GRID_SIZE,
-                self.GRID_SIZE,
-                self.GRID_SIZE
-            )
-            pygame.draw.rect(self.screen, self.WHITE, obs_rect)
+        # 绘制坦克
+        self.draw_tank(self.tanks[0], self.BLUE)
+        self.draw_tank(self.tanks[1], self.RED)
         
         # 绘制子弹
         for bullet in self.bullets:
+            bullet_x, bullet_y = bullet[0], bullet[1]
             bullet_rect = pygame.Rect(
-                bullet[0] * self.GRID_SIZE + self.GRID_SIZE // 3,
-                bullet[1] * self.GRID_SIZE + self.GRID_SIZE // 3,
-                self.GRID_SIZE // 3,
-                self.GRID_SIZE // 3
+                bullet_x * self.GRID_SIZE + self.GRID_SIZE // 2 - 2,
+                bullet_y * self.GRID_SIZE + self.GRID_SIZE // 2 - 2,
+                4, 4
             )
-            bullet_color = self.RED if bullet[3] == 1 else self.BLUE
-            pygame.draw.rect(self.screen, bullet_color, bullet_rect)
+            pygame.draw.rect(self.screen, self.WHITE, bullet_rect)
         
-        # 绘制坦克
-        self.draw_tank(self.tanks[0], self.RED)
-        self.draw_tank(self.tanks[1], self.BLUE)
-        
+        # 绘制游戏结束信息
         if self.game_over:
-            # 使用系统默认字体来显示中文
-            font = pygame.font.SysFont(None, 30)  # 如果没有中文字体，使用默认字体
-                
-            if self.winner == 1:
-                text = font.render('Player 1 Win!', True, self.RED)
-            elif self.winner == 2:
-                text = font.render('Player 2 Win!', True, self.BLUE)
-            else:
-                text = font.render('Game Over', True, self.WHITE)
-            text_rect = text.get_rect(center=(self.SCREEN_SIZE/2, self.SCREEN_SIZE/2))
+            font = pygame.font.Font(None, 36)
+            text = font.render(f"玩家 {self.winner} 获胜！", True, self.WHITE)
+            text_rect = text.get_rect(center=(self.SCREEN_SIZE // 2, self.SCREEN_SIZE // 2))
             self.screen.blit(text, text_rect)
         
         pygame.display.flip()
@@ -460,13 +456,17 @@ class SimplifiedGame:
     def close(self):
         """关闭游戏，释放资源"""
         try:
-            pygame.quit()
-        except:
-            pass  # 如果 pygame 已经关闭，忽略异常
+            # 仅在渲染模式为human且pygame已初始化的情况下才调用pygame.quit()
+            if self.render_mode == 'human' and pygame.get_init():
+                pygame.quit()
+        except Exception as e:
+            pass  # 如果pygame已经关闭，忽略异常
     
     def run(self):
         """游戏主循环"""
-        clock = pygame.time.Clock()
+        clock = None
+        if self.render_mode == 'human':
+            clock = pygame.time.Clock()
         frame_count = 0
         
         while self.running:
@@ -496,8 +496,7 @@ class SimplifiedGame:
                 pygame.display.flip()
                 clock.tick(10)  # 限制帧率为10 FPS
         
-        if self.render_mode == 'human':
-            pygame.quit()
+        self.close()
 
 def main(ai_opponent=False, ai_type='dqn', second_ai_type=None, render_mode='human', agent_path=None):
     game = SimplifiedGame(ai_opponent=ai_opponent, ai_type=ai_type, second_ai_type=second_ai_type, render_mode=render_mode, agent_path=agent_path)

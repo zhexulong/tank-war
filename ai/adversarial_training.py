@@ -468,42 +468,47 @@ def train_against_logic(
                     print(f"Worker (Ep {actual_ep_num_returned}) finished. Reward: {ep_reward:.2f}, "
                           f"Win: {ep_win}, Steps: {ep_steps}, Epsilon: {rl_agent.epsilon:.4f}{expert_info_str_parallel}")
 
-                if processed_episodes_count // save_interval > (start_episode -1 + len(batch_results) - num_episodes_to_run_in_batch) // save_interval or processed_episodes_count == episodes :
-                    # This condition means a save_interval boundary was crossed in this batch
-                    # Or it's the very last episode.
-                    # We use processed_episodes_count for the checkpoint name as it's the latest completed episode.
-                    checkpoint_data = {
-                        'episode': processed_episodes_count, # Save with the number of the last processed episode
-                        'model_state_dict': rl_agent.q_network.state_dict(),
-                        'optimizer_state_dict': rl_agent.optimizer.state_dict(),
-                        'rewards': rewards,
-                        'losses': losses,
-                        'win_rates': win_rates,
-                        'episode_lengths': episode_lengths,
-                        'expert_agreements': expert_agreements,
-                        'moving_avg_reward': moving_avg_reward,
-                        'moving_avg_loss': moving_avg_loss,
-                        'moving_avg_win_rate': moving_avg_win_rate,
-                        'moving_avg_expert_agreement': moving_avg_expert_agreement,
-                        'epsilon': rl_agent.epsilon,
-                        'use_expert_guidance': use_expert_guidance,
-                        'expert_reward_init': expert_reward_init,
-                        'expert_decay_factor': expert_decay_factor
-                    }
-                    chkpt_path = os.path.join(model_dir, f"rl_vs_logic_checkpoint_{processed_episodes_count}.pt")
-                    torch.save(checkpoint_data, chkpt_path)
-                    print(f"已保存检查点到: {chkpt_path} (after episode {processed_episodes_count})")
-
-                    plot_training_curves(
-                        rewards, losses, win_rates, episode_lengths,
-                        moving_avg_reward, moving_avg_loss, moving_avg_win_rate,
-                        processed_episodes_count, expert_agreements, moving_avg_expert_agreement,
-                        use_expert_guidance, run_timestamp
-                    )
-                    if use_expert_guidance:
-                        plot_expert_performance_relation(
-                            rewards, win_rates, expert_agreements, processed_episodes_count, run_timestamp=run_timestamp
+                # 完全重写的保存逻辑：检查每个已完成的episode，是否为save_interval的倍数
+                # 计算这一批次中需要保存的所有episode点
+                for check_ep in range(processed_episodes_count - len(batch_results) + 1, processed_episodes_count + 1):
+                    if check_ep % save_interval == 0 or check_ep == episodes:
+                        # 这个检查点需要保存
+                        checkpoint_data = {
+                            'episode': check_ep,
+                            'model_state_dict': rl_agent.q_network.state_dict(),
+                            'optimizer_state_dict': rl_agent.optimizer.state_dict(),
+                            'rewards': rewards,
+                            'losses': losses,
+                            'win_rates': win_rates,
+                            'episode_lengths': episode_lengths,
+                            'expert_agreements': expert_agreements,
+                            'moving_avg_reward': moving_avg_reward,
+                            'moving_avg_loss': moving_avg_loss,
+                            'moving_avg_win_rate': moving_avg_win_rate,
+                            'moving_avg_expert_agreement': moving_avg_expert_agreement,
+                            'epsilon': rl_agent.epsilon,
+                            'use_expert_guidance': use_expert_guidance,
+                            'expert_reward_init': expert_reward_init,
+                            'expert_decay_factor': expert_decay_factor
+                        }
+                        
+                        # 文件名使用当前episode数
+                        chkpt_path = os.path.join(model_dir, f"rl_vs_logic_checkpoint_{check_ep}.pt")
+                        torch.save(checkpoint_data, chkpt_path)
+                        print(f"已保存检查点到: {chkpt_path} (episode {check_ep})")
+                        
+                        # 绘制训练曲线
+                        plot_training_curves(
+                            rewards, losses, win_rates, episode_lengths,
+                            moving_avg_reward, moving_avg_loss, moving_avg_win_rate,
+                            check_ep, expert_agreements, moving_avg_expert_agreement,
+                            use_expert_guidance, run_timestamp
                         )
+                        
+                        if use_expert_guidance:
+                            plot_expert_performance_relation(
+                                rewards, win_rates, expert_agreements, check_ep, run_timestamp=run_timestamp
+                            )
                 if processed_episodes_count >= episodes:
                     break
 
