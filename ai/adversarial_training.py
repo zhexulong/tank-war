@@ -379,12 +379,12 @@ def train_against_logic(
         # Ensure 'spawn' start method for better compatibility, especially on Windows with Pygame
         # However, 'fork' (default on Linux) is generally more efficient if it works.
         # For simplicity here, we'll use the default, but consider get_context('spawn') if issues arise.
-        # import multiprocessing as mp
-        # ctx = mp.get_context('spawn') # Example for spawn context
+        import multiprocessing as mp # Import at a more local scope or ensure it's at the top
+        ctx = mp.get_context('spawn') # Use spawn context for CUDA compatibility
         
         processed_episodes_count = start_episode - 1 # Initialize before the loop
 
-        with multiprocessing.Pool(processes=num_workers) as pool:
+        with ctx.Pool(processes=num_workers) as pool: # Use the spawn context pool
             while processed_episodes_count < episodes:
                 num_episodes_to_run_in_batch = min(num_workers, episodes - processed_episodes_count)
                 if num_episodes_to_run_in_batch <= 0:
