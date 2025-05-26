@@ -1,5 +1,5 @@
 import argparse
-from ai.adversarial_training import train_against_logic
+from ai.adversarial_training import train_against_logic, train_ppo_against_logic
 
 def main():
     # 创建命令行参数解析器
@@ -10,6 +10,13 @@ def main():
     parser.add_argument('--save-interval', type=int, default=1000, help='模型保存间隔')
     parser.add_argument('--render', action='store_true', help='是否渲染游戏画面')
     parser.add_argument('--checkpoint', type=str, default=None, help='检查点文件路径，用于继续训练')
+    
+    # 算法选择参数
+    parser.add_argument('--algorithm', type=str, default='dqn', choices=['dqn', 'ppo'], help='选择RL算法: dqn或ppo')
+    
+    # PPO特有参数
+    parser.add_argument('--ppo-epochs', type=int, default=4, help='PPO每批数据训练轮数')
+    parser.add_argument('--ppo-batch-size', type=int, default=64, help='PPO训练批次大小')
     
     # 专家策略学习参数
     expert_group = parser.add_mutually_exclusive_group()
@@ -33,8 +40,14 @@ def main():
     print(f"模型保存间隔: {args.save_interval}")
     print(f"渲染游戏画面: {args.render}")
     print(f"检查点文件: {args.checkpoint if args.checkpoint else '无'}")
+    print(f"RL算法: {args.algorithm.upper()}")
     print(f"并行工作者数量: {args.num_workers}")
     print(f"记录Worker动作日志: {args.log_worker_actions}")
+    
+    if args.algorithm == 'ppo':
+        print("\n===== PPO特有参数 =====")
+        print(f"PPO每批数据训练轮数: {args.ppo_epochs}")
+        print(f"PPO训练批次大小: {args.ppo_batch_size}")
     
     if args.use_expert:
         print("\n===== 专家策略学习配置 =====")
@@ -46,18 +59,37 @@ def main():
         print("匹配规则: 0=0, 1=1, 3=2, 4=3, 5=4, 后退(2)永远不匹配")
     
     # 开始训练
-    print("\n开始训练RL智能体对抗Logic智能体...")
-    trained_agent = train_against_logic(
-        episodes=args.episodes, 
-        save_interval=args.save_interval, 
-        render=args.render,
-        checkpoint_path=args.checkpoint,
-        use_expert_guidance=args.use_expert,
-        expert_reward_init=args.expert_reward,
-        expert_decay_factor=args.expert_decay,
-        num_workers=args.num_workers,
-        log_worker_actions=args.log_worker_actions
-    )
+    print(f"\n开始训练{args.algorithm.upper()}智能体对抗Logic智能体...")
+    
+    if args.algorithm == 'dqn':
+        # 使用DQN算法训练
+        trained_agent = train_against_logic(
+            episodes=args.episodes, 
+            save_interval=args.save_interval, 
+            render=args.render,
+            checkpoint_path=args.checkpoint,
+            use_expert_guidance=args.use_expert,
+            expert_reward_init=args.expert_reward,
+            expert_decay_factor=args.expert_decay,
+            num_workers=args.num_workers,
+            log_worker_actions=args.log_worker_actions
+        )
+    else:
+        # 使用PPO算法训练
+        trained_agent = train_ppo_against_logic(
+            episodes=args.episodes, 
+            save_interval=args.save_interval, 
+            render=args.render,
+            checkpoint_path=args.checkpoint,
+            use_expert_guidance=args.use_expert,
+            expert_reward_init=args.expert_reward,
+            expert_decay_factor=args.expert_decay,
+            num_workers=args.num_workers,
+            log_worker_actions=args.log_worker_actions,
+            ppo_epochs=args.ppo_epochs,
+            ppo_batch_size=args.ppo_batch_size
+        )
+    
     print("训练完成！")
 
 if __name__ == "__main__":

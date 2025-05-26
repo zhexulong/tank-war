@@ -1,5 +1,7 @@
 import os
 import sys
+import matplotlib
+matplotlib.use('Agg')  # 设置非交互式后端
 import pygame
 from pygame.locals import *
 
