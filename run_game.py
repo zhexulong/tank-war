@@ -23,13 +23,14 @@ def main():
                         help='游戏类型：普通版或简化版')
     parser.add_argument('--mode', type=str, default='human_vs_ai',
                         choices=['human_vs_human', 'human_vs_ai', 'ai_vs_ai', 
-                                'logic_ai_vs_human', 'logic_ai_vs_ai', 'train'],
+                                'logic_ai_vs_human', 'logic_ai_vs_ai', 'train',
+                                'human_vs_minimax', 'minimax_vs_human', 'logic_ai_vs_minimax'],
                         help='游戏模式')
     parser.add_argument('--agent', type=str, default=None,
                         help='AI智能体模型路径')
     parser.add_argument('--ai_type', type=str, default='dqn',
-                        choices=['dqn', 'logic'],
-                        help='AI类型：dqn或logic')
+                        choices=['dqn', 'logic', 'minimax'],
+                        help='AI类型：dqn、logic或minimax')
     parser.add_argument('--episodes', type=int, default=1000,
                         help='训练回合数')
     parser.add_argument('--render', action='store_true',
@@ -40,6 +41,7 @@ def main():
     if args.game_type == 'simplified':
         from game_simplified.game import main as start_simplified_game
         render_mode_value = 'human' if args.render else None
+        
         if args.mode == 'human_vs_human':
             start_simplified_game(render_mode=render_mode_value)
         elif args.mode == 'human_vs_ai':
@@ -50,6 +52,18 @@ def main():
             start_simplified_game(ai_opponent=True, ai_type='logic', render_mode=render_mode_value)
         elif args.mode == 'logic_ai_vs_ai':
             start_simplified_game(ai_opponent=True, ai_type='logic', second_ai_type='logic', render_mode=render_mode_value)
+        elif args.mode == 'human_vs_minimax':
+            # Human is player 1, Minimax is player 2
+            start_simplified_game(ai_opponent=True, ai_type='minimax', render_mode=render_mode_value)
+        elif args.mode == 'minimax_vs_human':
+            # Minimax is player 1, Human is player 2
+            start_simplified_game(ai_opponent=True, ai_type='minimax', second_ai_type=None, render_mode=render_mode_value)
+            # Swap player controls since minimax is player 1
+            from game_simplified.game import SimplifiedGame
+            SimplifiedGame.handle_input = lambda self: self._handle_input_p2_controls()
+        elif args.mode == 'logic_ai_vs_minimax':
+            # Both players are minimax agents
+            start_simplified_game(ai_opponent=True, ai_type='logic', second_ai_type='minimax', render_mode=render_mode_value)
         elif args.mode == 'train':
             from ai.training import train_single_agent
             train_single_agent(episodes=args.episodes, render=args.render, simplified=True)
@@ -81,6 +95,11 @@ def main():
         from main import main as start_game
         start_game(ai_opponent=True, ai_type='logic', second_ai_type='logic')
     
+    elif args.mode == 'human_vs_minimax':
+        # Human vs Minimax mode (simplified only)
+        print("Minimax agent is only supported in simplified game mode. Please use --game_type simplified")
+        sys.exit(1)
+        
     elif args.mode == 'train':
         # AI训练模式
         from ai.training import train_single_agent, train_multi_agent
