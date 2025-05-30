@@ -248,7 +248,7 @@ def train_against_logic(
     render: bool = False, 
     checkpoint_path: str = None,
     use_expert_guidance: bool = False,
-    expert_reward_init: float = 100.0,
+    expert_reward_init: float = 1.0,
     expert_decay_factor: float = 1.0,
     num_workers: int = 1, # 新增并行工作者数量参数
     log_worker_actions: bool = False # 新增: 是否打印首个worker的详细动作日志

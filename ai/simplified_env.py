@@ -138,11 +138,11 @@ class SimplifiedGameEnv:
         # 游戏结束奖励
         if next_state['game_over']:
             if next_state['winner'] == 1:  # RL智能体获胜
-                rl_reward += 100
-                logic_reward -= 100
+                rl_reward += 50
+                logic_reward -= 50
             elif next_state['winner'] == 2:  # Logic智能体获胜
-                rl_reward -= 100
-                logic_reward += 100
+                rl_reward -= 50
+                logic_reward += 50
         
         # 存活奖励
         rl_reward += 0.1

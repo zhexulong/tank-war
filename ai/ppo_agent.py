@@ -54,8 +54,8 @@ class PPONetwork(nn.Module):
             if isinstance(m, nn.Linear):
                 nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
                 nn.init.constant_(m.bias, 0)
-    def forward(self, x: Dict) -> Tuple[torch.Tensor, torch.Tensor]:
-        """前向传播，返回策略分布和状态价值"""
+    def forward(self, x: Dict) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """前向传播，返回策略分布、对数概率和状态价值"""
         # 展平所有输入
         map_flat = x['map'].flatten(start_dim=1)
         tanks_flat = x['tanks'].flatten(start_dim=1)
@@ -68,17 +68,13 @@ class PPONetwork(nn.Module):
         shared_features = self.shared_layers(combined)
         
         # 策略和价值输出
-        policy_logits = self.policy_head(shared_features)
-        # 使用softmax直接得到概率分布，更稳定
-        policy = F.softmax(policy_logits, dim=-1)
-        # 使用clip避免极端值
-        policy = torch.clamp(policy, min=1e-6, max=1.0)
-        # 确保概率和为1
-        policy = F.normalize(policy, p=1, dim=-1)
+        logits = self.policy_head(shared_features)
+        log_probs = F.log_softmax(logits, dim=-1)
+        probs = log_probs.exp()
         
         value = self.value_head(shared_features)
         
-        return policy, value
+        return probs, log_probs, value
 
 
 class PPOAgent(BaseAgent):
@@ -97,8 +93,8 @@ class PPOAgent(BaseAgent):
         self.gamma = 0.99  # 折扣因子
         self.gae_lambda = 0.95  # GAE参数
         self.clip_epsilon = 0.2  # PPO截断参数
-        self.entropy_coef = 0.01  # 熵正则化系数
-        self.value_coef = 0.5  # 价值损失系数
+        self.entropy_coef = 0.03  # 熵正则化系数
+        self.value_coef = 0.1  # 价值损失系数
         self.max_grad_norm = 0.5  # 梯度截断
         
         # 经验缓冲区
@@ -110,15 +106,15 @@ class PPOAgent(BaseAgent):
         
     def select_action(self, state: Dict, training: bool = True) -> int:
         """选择动作"""
-        with torch.no_grad():
+        with torch.no_grad():            
             state_tensor = self._dict_to_tensor(state)
-            policy, value = self.network(state_tensor)
+            policy, log_probs, value = self.network(state_tensor)
             
             if training:
                 # 根据策略分布采样
                 action_dist = torch.distributions.Categorical(policy)
                 action = action_dist.sample()
-                log_prob = action_dist.log_prob(action)
+                log_prob = log_probs.gather(1, action.unsqueeze(-1)).squeeze(-1)
                 
                 # 存储选择信息用于训练
                 self.last_action_info = {
@@ -157,7 +153,7 @@ class PPOAgent(BaseAgent):
                 
         self.buffer.clear()
         self.train_step += 1
-        
+        print(f"训练步骤: {self.train_step}, 平均损失: {total_loss / max(num_updates, 1):.4f}")
         return total_loss / max(num_updates, 1)
     
     def _update_network(self, batch: Dict) -> float:
@@ -173,21 +169,19 @@ class PPOAgent(BaseAgent):
         adv_std = advantages.std()
         if adv_std > 0:
             advantages = (advantages - adv_mean) / (adv_std + 1e-8)
-        
-        # 前向传播
-        policy, values = self.network(states)
+          # 前向传播
+        policy, log_probs, values = self.network(states)
         values = values.squeeze(-1)  # 确保维度匹配
-        
-        # 检查并处理策略输出
-        if torch.isnan(policy).any() or torch.isinf(policy).any():
-            policy = F.softmax(self.network.policy_head(self.network.shared_layers(states)), dim=-1)
         
         # 计算策略损失
         try:
-            action_dist = torch.distributions.Categorical(probs=policy)
-            new_log_probs = action_dist.log_prob(actions)
+            # 获取对应动作的对数概率
+            action_log_probs = log_probs.gather(1, actions.unsqueeze(-1)).squeeze(-1)
             
-            ratio = torch.exp(torch.clamp(new_log_probs - old_log_probs, -20, 20))
+            # 直接计算比率
+            ratio = torch.exp(action_log_probs - old_log_probs)
+            
+            # PPO裁剪目标
             surr1 = ratio * advantages
             surr2 = torch.clamp(ratio, 1 - self.clip_epsilon, 1 + self.clip_epsilon) * advantages
             policy_loss = -torch.min(surr1, surr2).mean()
@@ -195,8 +189,8 @@ class PPOAgent(BaseAgent):
             # 确保返回维度匹配
             returns = returns.view_as(values)
             value_loss = F.mse_loss(values, returns)
-            
-            # 计算熵损失
+              # 计算熵损失
+            action_dist = torch.distributions.Categorical(probs=policy)
             entropy = action_dist.entropy().mean()
             entropy_loss = -self.entropy_coef * entropy
             
