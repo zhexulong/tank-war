@@ -205,7 +205,7 @@ class DQNAgent(BaseAgent):
         expected_bullets_shape = self.state_shape['bullets'] # (num_bullets, num_bullet_features)
 
         # Define feature keys consistently (assuming these are correct from _batch_dict_to_tensor context)
-        tank_feature_keys = ['x', 'y', 'angle', 'hp'] 
+        tank_feature_keys = ['x', 'y', 'angle', 'player_id'] 
         bullet_feature_keys = ['x', 'y', 'angle'] # Consistent with _batch_dict_to_tensor summary
 
         # --- MAP PROCESSING ---
@@ -261,7 +261,7 @@ class DQNAgent(BaseAgent):
         expected_tanks_shape = self.state_shape['tanks'] # (num_tanks, num_tank_features)
         expected_bullets_shape = self.state_shape['bullets'] # (num_bullets, num_bullet_features)
 
-        tank_feature_keys = ['x', 'y', 'angle', 'hp'] # Should match expected_tanks_shape[1]
+        tank_feature_keys = ['x', 'y', 'angle', 'player_id'] # Should match expected_tanks_shape[1]
         bullet_feature_keys = ['x', 'y', 'angle'] # CORRECTED: Should match expected_bullets_shape[1]
 
         maps_list = []

@@ -102,7 +102,6 @@ def worker_collect_episode_data(args_bundle):
 
     experiences = []
     state = env.reset()
-    
     episode_reward_val = 0
     episode_steps_val = 0
     expert_agreements_val = 0
@@ -849,7 +848,7 @@ def train_ppo_against_logic(
             while not done and episode_step < MAX_STEPS_PER_EPISODE_WORKER:
                 # PPO智能体选择动作
                 ppo_action = ppo_agent.select_action(state, training=True)
-                
+                print(f"state: {state}")
                 # 对手选择动作
                 logic_action = logic_agent.select_action(state)
                 
@@ -909,7 +908,7 @@ def train_ppo_against_logic(
                 expert_info_str = f", ExpAgree: {expert_agreement_rate:.2%}, ExpRewVal: {current_expert_reward_value:.2f}"
             
             print(f"Episode {episode}/{episodes}, Reward: {episode_reward:.2f}, AvgLoss: {losses[-1]:.4f}, "
-                  f"Win: {win}, Steps: {episode_step}, Epsilon: {ppo_agent.epsilon:.4f}{expert_info_str}")
+                  f"Win: {win}, Steps: {episode_step}")
 
             # 计算移动平均
             current_window_size = min(len(rewards), window_size)

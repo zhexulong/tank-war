@@ -45,10 +45,10 @@ class SimplifiedGameEnv:
                     'x': t.get('position', [0,0])[0],
                     'y': t.get('position', [0,0])[1],
                     'angle': t.get('direction', 0),
-                    'hp': t.get('health', 1.0)
+                    'player_id': t.get('player_id', 1.0)
                 })
             else:
-                formatted['tanks'].append({'x':0,'y':0,'angle':0,'hp':0})
+                formatted['tanks'].append({'x':0,'y':0,'angle':0,'player_id':0})
         # 子弹列表，pad/truncate到固定数量
         formatted['bullets'] = []
         raw_bullets = raw_state.get('bullets', [])
@@ -63,6 +63,7 @@ class SimplifiedGameEnv:
                 })
             else:
                 formatted['bullets'].append({'x':0,'y':0,'angle':0})
+        formatted['obstacles'] = raw_state.get('obstacles', [])
         return formatted
 
     def reset(self):
@@ -101,7 +102,7 @@ class SimplifiedGameEnv:
         self.game.ai_interface._execute_action(tank2, actions[1])
         
         # 更新游戏状态
-        self.game.update_ai()
+        # self.game.update_ai()
         self.game.update_bullets()
         
         # 获取新状态

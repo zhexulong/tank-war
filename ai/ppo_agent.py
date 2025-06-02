@@ -231,7 +231,7 @@ class PPOAgent(BaseAgent):
         expected_tanks_shape = self.state_shape['tanks']
         expected_bullets_shape = self.state_shape['bullets']
         
-        tank_feature_keys = ['x', 'y', 'angle', 'hp']
+        tank_feature_keys = ['x', 'y', 'angle', 'player_id']
         bullet_feature_keys = ['x', 'y', 'angle']
         
         # 处理地图
@@ -278,7 +278,7 @@ class PPOAgent(BaseAgent):
         expected_tanks_shape = self.state_shape['tanks']
         expected_bullets_shape = self.state_shape['bullets']
         
-        tank_feature_keys = ['x', 'y', 'angle', 'hp']
+        tank_feature_keys = ['x', 'y', 'angle', 'player_id']
         bullet_feature_keys = ['x', 'y', 'angle']
         
         maps_list = []

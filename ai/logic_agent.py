@@ -23,6 +23,7 @@ class LogicAgent(BaseAgent):
         """
         # 兼容简化环境的state格式，将简化版tank属性(x,y,angle)映射为(position,direction)
         raw_tanks = state.get('tanks', [])
+        # print("raw_tanks:", raw_tanks)
         tanks = []
         for t in raw_tanks:
             if 'position' not in t:
