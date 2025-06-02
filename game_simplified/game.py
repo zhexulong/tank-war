@@ -1,10 +1,10 @@
-# 导入所需模块
+# Import required modules
 import pygame
 import random
-from ai.simplified_interface import SimplifiedAIInterface  # 使用简化版AI接口
+from ai.simplified_interface import SimplifiedAIInterface
 from game.core import GameCore
 
-# 地形类型常量
+# Terrain type constants
 EMPTY = 0
 BRICK = 1
 STEEL = 2
@@ -12,38 +12,38 @@ WATER = 3
 GRASS = 4
 
 class SimplifiedMap:
-    """简化版地图类"""
+    """Simplified map class"""
     def __init__(self, width, height, tile_size):
         self.width = width
         self.height = height
         self.tile_size = tile_size
         self.grid = [[EMPTY for _ in range(width)] for _ in range(height)]
-        self.obstacles = set()  # 存储障碍物位置
+        self.obstacles = set()  # Store obstacle positions
     
     def get_tile(self, x, y):
-        """获取指定位置的地形类型"""
+        """Get terrain type at specified position"""
         if 0 <= x < self.width and 0 <= y < self.height:
             if (x, y) in self.obstacles:
                 return BRICK
             return EMPTY
-        return STEEL  # 地图边界视为钢墙
+        return STEEL  # Map boundaries are treated as steel walls
     
     def add_obstacle(self, x, y):
-        """添加障碍物"""
+        """Add obstacle"""
         if 0 <= x < self.width and 0 <= y < self.height:
             self.obstacles.add((x, y))
     
     def remove_obstacle(self, x, y):
-        """移除障碍物"""
+        """Remove obstacle"""
         if (x, y) in self.obstacles:
             self.obstacles.remove((x, y))
     
     def is_obstacle(self, x, y):
-        """检查位置是否有障碍物"""
+        """Check if position has obstacle"""
         return (x, y) in self.obstacles
 
 class SimplifiedTank:
-    """简化版坦克类"""
+    """Simplified tank class"""
     def __init__(self, x, y, direction, player_id):
         self.position = [x, y]
         self.direction = direction
@@ -60,103 +60,112 @@ class SimplifiedTank:
 
 class SimplifiedGame:
     def __init__(self, ai_opponent=False, ai_type='dqn', second_ai_type=None, render_mode=None, agent_path=None):
-        # pygame.init()  # 不再无条件初始化pygame
+        # Game constants
+        self.GRID_SIZE = 50  # Pixel size of each grid cell
+        self.MAP_SIZE = 16   # Map size (in grid cells)
+        self.SCREEN_SIZE = self.GRID_SIZE * self.MAP_SIZE  # Screen size
         
-        # 游戏常量
-        self.GRID_SIZE = 10  # 每个格子的像素大小
-        self.MAP_SIZE = 16   # 地图大小(格子数)
-        self.SCREEN_SIZE = self.GRID_SIZE * self.MAP_SIZE  # 屏幕大小
-        
-        # AI模型路径
+        # AI model path
         self.agent_path = agent_path
         
-        # 渲染模式
+        # Render mode
         self.render_mode = render_mode
         
-        # pygame初始化和屏幕设置 (仅在需要渲染时)
+        # Pygame initialization and screen setup (only when rendering)
         self.screen = None
         if self.render_mode == 'human':
-            # 仅在渲染模式为human时初始化pygame
             pygame.init()
             self.screen = pygame.display.set_mode((self.SCREEN_SIZE, self.SCREEN_SIZE))
-            pygame.display.set_caption('简化版坦克大战')
+            pygame.display.set_caption('Tank Battle')
         
-        # 颜色定义
+        # Color definitions
         self.BLACK = (0, 0, 0)
         self.WHITE = (255, 255, 255)
         self.GRAY = (128, 128, 128)
         self.RED = (255, 0, 0)
         self.BLUE = (0, 0, 255)
+        # Additional colors
+        self.DARK_GRAY = (40, 40, 40)
+        self.LIGHT_GRAY = (200, 200, 200)
+        self.BRICK_COLOR = (139, 69, 19)  # Brick wall color
+        self.TANK_BLUE = (30, 144, 255)   # Player tank color
+        self.TANK_RED = (220, 20, 60)     # AI tank color
+        self.BULLET_COLOR = (255, 215, 0)  # Bullet color
+        self.GRID_COLOR = (50, 50, 50)    # Grid line color
+        # Tank detail colors
+        self.TANK_BLUE_DARK = (0, 100, 200)   # Player tank dark color
+        self.TANK_RED_DARK = (180, 0, 0)      # AI tank dark color
+        self.TANK_HIGHLIGHT = (255, 255, 255, 128)  # Tank highlight
         
-        # 创建地图
+        # Create map
         self.current_map = SimplifiedMap(self.MAP_SIZE, self.MAP_SIZE, self.GRID_SIZE)
         
-        # 游戏状态
+        # Game state
         self.running = True
         self.game_over = False
         self.winner = None
         
-        # 游戏元素
+        # Game elements
         self.tanks = []
         self.bullets = []
         
-        # AI相关设置
+        # AI settings
         self.ai_opponent = ai_opponent
         self.ai_type = ai_type
         self.second_ai_type = second_ai_type
         self.ai_interface = None
         
-        # 初始化游戏
+        # Initialize game
         self.init_game()
         
-        # 如果启用AI，初始化AI接口
+        # Initialize AI if enabled
         if self.ai_opponent:
             self.setup_ai()
     
     def init_game(self):
-        """初始化游戏状态"""
-        # 重置坦克位置
+        """Initialize game state"""
+        # Reset tank positions
         self.tanks = [
-            SimplifiedTank(2, 2, 0, 1),  # 玩家1坦克
-            SimplifiedTank(self.MAP_SIZE - 3, self.MAP_SIZE - 3, 2, 2)  # 玩家2坦克
+            SimplifiedTank(2, 2, 0, 1),  # Player 1 tank
+            SimplifiedTank(self.MAP_SIZE - 3, self.MAP_SIZE - 3, 2, 2)  # Player 2 tank
         ]
         
-        # 清空子弹
+        # Clear bullets
         self.bullets = []
         
-        # 重置游戏状态
+        # Reset game state
         self.game_over = False
         self.winner = None
         
-        # 生成障碍物
+        # Generate obstacles
         self.current_map.obstacles = self.generate_obstacles()
     
     def setup_ai(self):
-        """设置AI系统"""
+        """Set up AI system"""
         game_core = GameCore(self)
         self.ai_interface = SimplifiedAIInterface(self, game_core)
         
-        print(f"正在初始化AI - 类型: {self.ai_type}")
-        # 初始化AI（玩家2）
+        print(f"Initializing AI - Type: {self.ai_type}")
+        # Initialize AI (Player 2)
         self.ai_interface.load_agent(2, self.agent_path, self.ai_type)
         self.tanks[1].is_player = False
         
-        # 如果是AI对战模式
+        # If it's AI vs AI mode
         if self.second_ai_type:
-            print(f"正在初始化第二个AI - 类型: {self.second_ai_type}")
+            print(f"Initializing second AI - Type: {self.second_ai_type}")
             self.ai_interface.load_agent(1, self.agent_path, self.second_ai_type)
-            self.tanks[0].is_player = False  # 设置玩家1的坦克为AI控制
+            self.tanks[0].is_player = False  # Set player 1 tank to AI control
 
     def get_player_tank(self, player_id):
-        """获取指定玩家的坦克"""
+        """Get specified player's tank"""
         for tank in self.tanks:
             if tank.player_id == player_id:
                 return tank
         return None
 
     def get_game_state_for_rl(self):
-        """获取用于强化学习的游戏状态"""
-        # 重新生成地图网格：0表示空地，1表示障碍
+        """Get game state for reinforcement learning"""
+        # Regenerate map grid: 0 represents empty land, 1 represents obstacle
         map_grid = [[1 if self.current_map.is_obstacle(x, y) else 0
                      for x in range(self.MAP_SIZE)]
                     for y in range(self.MAP_SIZE)]
@@ -173,16 +182,16 @@ class SimplifiedGame:
         }
     
     def get_state_shape(self):
-        """获取游戏状态空间的形状"""
+        """Get shape of game state space"""
         return {
-            'map': (self.MAP_SIZE, self.MAP_SIZE),  # 地图网格
-            'tanks': (2, 4),  # 两辆坦克，每个坦克 [x,y,direction,player_id]
-            'bullets': (10, 3),  # 最多10颗子弹，每个子弹 [x,y,direction]
+            'map': (self.MAP_SIZE, self.MAP_SIZE),  # Map grid
+            'tanks': (2, 4),  # Two tanks, each tank [x,y,direction,player_id]
+            'bullets': (10, 3),  # Up to 10 bullets, each bullet [x,y,direction]
         }
     
     def generate_obstacles(self, num_obstacles=50):
         obstacles = set()
-        # 保护两个坦克的初始区域
+        # Protect initial area of two tanks
         tank1_area = {(x, y) for x in range(self.tanks[0].position[0]-1, self.tanks[0].position[0]+2)
                             for y in range(self.tanks[0].position[1]-1, self.tanks[0].position[1]+2)}
         tank2_area = set()
@@ -197,87 +206,92 @@ class SimplifiedGame:
             y = random.randint(0, self.MAP_SIZE-1)
             if (x, y) not in protected_area:
                 obstacles.add((x, y))
-                self.current_map.add_obstacle(x, y)  # 同时更新地图中的障碍物
+                self.current_map.add_obstacle(x, y)  # Also update obstacles in map
         return obstacles
     
     def handle_input(self):        
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
-            elif event.type == pygame.KEYDOWN and not self.game_over:
-                # 玩家1控制 (如果没有第二AI)
-                if not self.second_ai_type:
-                    if event.key == pygame.K_SPACE:  # 发射子弹
-                        tank1 = self.tanks[0]
-                        self.bullets.append([tank1.position[0], tank1.position[1], tank1.direction, 1])
-                    elif event.key == pygame.K_a:  # 玩家1逆时针旋转
-                        self.tanks[0].update_direction((self.tanks[0].direction - 1) % 4)
-                    elif event.key == pygame.K_d:  # 玩家1顺时针旋转
-                        self.tanks[0].update_direction((self.tanks[0].direction + 1) % 4)
-                    elif event.key == pygame.K_w:  # 向当前方向前进
-                        tank1 = self.tanks[0]
-                        new_pos = tank1.position.copy()
-                        if tank1.direction == 0:  # 上
-                            new_pos[1] = max(0, new_pos[1] - 1)
-                        elif tank1.direction == 1:  # 右
-                            new_pos[0] = min(self.MAP_SIZE - 1, new_pos[0] + 1)
-                        elif tank1.direction == 2:  # 下
-                            new_pos[1] = min(self.MAP_SIZE - 1, new_pos[1] + 1)
-                        elif tank1.direction == 3:  # 左
-                            new_pos[0] = max(0, new_pos[0] - 1)
-                        if (new_pos[0], new_pos[1]) not in self.current_map.obstacles:
-                            tank1.update_position(new_pos)
-                    elif event.key == pygame.K_s:  # 向当前方向后退
-                        tank1 = self.tanks[0]
-                        new_pos = tank1.position.copy()
-                        if tank1.direction == 0:  # 上
-                            new_pos[1] = min(self.MAP_SIZE - 1, new_pos[1] + 1)
-                        elif tank1.direction == 1:  # 右
-                            new_pos[0] = max(0, new_pos[0] - 1)
-                        elif tank1.direction == 2:  # 下
-                            new_pos[1] = max(0, new_pos[1] - 1)
-                        elif tank1.direction == 3:  # 左
-                            new_pos[0] = min(self.MAP_SIZE - 1, new_pos[0] + 1)
-                        if (new_pos[0], new_pos[1]) not in self.current_map.obstacles:
-                            tank1.update_position(new_pos)
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.running = False
+                elif event.key == pygame.K_r and self.game_over:  # Add restart functionality
+                    self.restart_game()
+                elif not self.game_over:
+                    # Player 1 control (if no second AI)
+                    if not self.second_ai_type:
+                        if event.key == pygame.K_SPACE:  # Fire bullet
+                            tank1 = self.tanks[0]
+                            self.bullets.append([tank1.position[0], tank1.position[1], tank1.direction, 1])
+                        elif event.key == pygame.K_a:  # Player 1 counterclockwise rotation
+                            self.tanks[0].update_direction((self.tanks[0].direction - 1) % 4)
+                        elif event.key == pygame.K_d:  # Player 1 clockwise rotation
+                            self.tanks[0].update_direction((self.tanks[0].direction + 1) % 4)
+                        elif event.key == pygame.K_w:  # Move forward in current direction
+                            tank1 = self.tanks[0]
+                            new_pos = tank1.position.copy()
+                            if tank1.direction == 0:  # Up
+                                new_pos[1] = max(0, new_pos[1] - 1)
+                            elif tank1.direction == 1:  # Right
+                                new_pos[0] = min(self.MAP_SIZE - 1, new_pos[0] + 1)
+                            elif tank1.direction == 2:  # Down
+                                new_pos[1] = min(self.MAP_SIZE - 1, new_pos[1] + 1)
+                            elif tank1.direction == 3:  # Left
+                                new_pos[0] = max(0, new_pos[0] - 1)
+                            if (new_pos[0], new_pos[1]) not in self.current_map.obstacles:
+                                tank1.update_position(new_pos)
+                        elif event.key == pygame.K_s:  # Move backward in current direction
+                            tank1 = self.tanks[0]
+                            new_pos = tank1.position.copy()
+                            if tank1.direction == 0:  # Up
+                                new_pos[1] = min(self.MAP_SIZE - 1, new_pos[1] + 1)
+                            elif tank1.direction == 1:  # Right
+                                new_pos[0] = max(0, new_pos[0] - 1)
+                            elif tank1.direction == 2:  # Down
+                                new_pos[1] = max(0, new_pos[1] - 1)
+                            elif tank1.direction == 3:  # Left
+                                new_pos[0] = min(self.MAP_SIZE - 1, new_pos[0] + 1)
+                            if (new_pos[0], new_pos[1]) not in self.current_map.obstacles:
+                                tank1.update_position(new_pos)
 
-                # 玩家2控制 (如果没有AI对手)
+                # Player 2 control (if no AI opponent)
                 if not self.ai_opponent:
-                    if event.key == pygame.K_RETURN:  # 发射子弹
+                    if event.key == pygame.K_RETURN:  # Fire bullet
                         tank2 = self.tanks[1]
                         self.bullets.append([tank2.position[0], tank2.position[1], tank2.direction, 2])
-                    elif event.key == pygame.K_LEFT:  # 玩家2逆时针旋转
+                    elif event.key == pygame.K_LEFT:  # Player 2 counterclockwise rotation
                         self.tanks[1].update_direction((self.tanks[1].direction - 1) % 4)
-                    elif event.key == pygame.K_RIGHT:  # 玩家2顺时针旋转
+                    elif event.key == pygame.K_RIGHT:  # Player 2 clockwise rotation
                         self.tanks[1].update_direction((self.tanks[1].direction + 1) % 4)
-                    elif event.key == pygame.K_UP:  # 向当前方向前进
+                    elif event.key == pygame.K_UP:  # Move forward in current direction
                         tank2 = self.tanks[1]
                         new_pos = tank2.position.copy()
-                        if tank2.direction == 0:  # 上
+                        if tank2.direction == 0:  # Up
                             new_pos[1] = max(0, new_pos[1] - 1)
-                        elif tank2.direction == 1:  # 右
+                        elif tank2.direction == 1:  # Right
                             new_pos[0] = min(self.MAP_SIZE - 1, new_pos[0] + 1)
-                        elif tank2.direction == 2:  # 下
+                        elif tank2.direction == 2:  # Down
                             new_pos[1] = min(self.MAP_SIZE - 1, new_pos[1] + 1)
-                        elif tank2.direction == 3:  # 左
+                        elif tank2.direction == 3:  # Left
                             new_pos[0] = max(0, new_pos[0] - 1)
                         if (new_pos[0], new_pos[1]) not in self.current_map.obstacles:
                             tank2.update_position(new_pos)
-                    elif event.key == pygame.K_DOWN:  # 向当前方向后退
+                    elif event.key == pygame.K_DOWN:  # Move backward in current direction
                         tank2 = self.tanks[1]
                         new_pos = tank2.position.copy()
-                        if tank2.direction == 0:  # 上
+                        if tank2.direction == 0:  # Up
                             new_pos[1] = min(self.MAP_SIZE - 1, new_pos[1] + 1)
-                        elif tank2.direction == 1:  # 右
+                        elif tank2.direction == 1:  # Right
                             new_pos[0] = max(0, new_pos[0] - 1)
-                        elif tank2.direction == 2:  # 下
+                        elif tank2.direction == 2:  # Down
                             new_pos[1] = max(0, new_pos[1] - 1)
-                        elif tank2.direction == 3:  # 左
+                        elif tank2.direction == 3:  # Left
                             new_pos[0] = min(self.MAP_SIZE - 1, new_pos[0] + 1)
                         if (new_pos[0], new_pos[1]) not in self.current_map.obstacles:
                             tank2.update_position(new_pos)
 
-        # 更新AI控制的坦克
+        # Update AI-controlled tanks
         if not self.game_over:
             if self.ai_opponent or self.second_ai_type:
                 self.ai_interface.update_ai_controlled_tanks()
@@ -285,41 +299,41 @@ class SimplifiedGame:
     def update_bullets(self):
         new_bullets = []
         for bullet in self.bullets:
-            # 保存子弹的原始位置
+            # Save bullet's original position
             old_x, old_y = bullet[0], bullet[1]
             
-            # 根据方向更新子弹位置
-            if bullet[2] == 0:  # 上
+            # Update bullet position based on direction
+            if bullet[2] == 0:  # Up
                 bullet[1] -= 1
-            elif bullet[2] == 1:  # 右
+            elif bullet[2] == 1:  # Right
                 bullet[0] += 1
-            elif bullet[2] == 2:  # 下
+            elif bullet[2] == 2:  # Down
                 bullet[1] += 1
-            elif bullet[2] == 3:  # 左
+            elif bullet[2] == 3:  # Left
                 bullet[0] -= 1
             
-            # 计算子弹移动路径上的所有格子
+            # Calculate all grid cells in bullet's path
             path_points = []
-            if old_x != bullet[0]:  # 水平移动
+            if old_x != bullet[0]:  # Horizontal movement
                 start, end = min(old_x, bullet[0]), max(old_x, bullet[0]) + 1
                 path_points = [(x, bullet[1]) for x in range(start, end)]
-            elif old_y != bullet[1]:  # 垂直移动
+            elif old_y != bullet[1]:  # Vertical movement
                 start, end = min(old_y, bullet[1]), max(old_y, bullet[1]) + 1
                 path_points = [(bullet[0], y) for y in range(start, end)]
             
-            # 检查路径上是否有障碍物
+            # Check for obstacles in path
             hit_obstacle = False
             for x, y in path_points:
-                if (x, y) in self.current_map.obstacles:  # 使用地图的障碍物集合
-                    self.current_map.remove_obstacle(x, y)  # 使用地图类的方法移除障碍物
+                if (x, y) in self.current_map.obstacles:
+                    self.current_map.remove_obstacle(x, y)
                     hit_obstacle = True
                     break
             
             if hit_obstacle:
                 continue
                 
-            # 检查路径上是否击中坦克
-            if bullet[3] == 1:  # 玩家1的子弹
+            # Check for tank hits in path
+            if bullet[3] == 1:  # Player 1's bullet
                 if self.ai_opponent:
                     for x, y in path_points:
                         if x == self.tanks[1].position[0] and y == self.tanks[1].position[1]:
@@ -328,7 +342,7 @@ class SimplifiedGame:
                             break
                     if self.game_over:
                         continue
-            else:  # 玩家2或AI的子弹
+            else:  # Player 2 or AI's bullet
                 for x, y in path_points:
                     if x == self.tanks[0].position[0] and y == self.tanks[0].position[1]:
                         self.game_over = True
@@ -337,78 +351,168 @@ class SimplifiedGame:
                 if self.game_over:
                     continue
             
-            # 检查是否在地图范围内
+            # Check if within map boundaries
             if 0 <= bullet[0] < self.MAP_SIZE and 0 <= bullet[1] < self.MAP_SIZE:
                 new_bullets.append(bullet)
         
         self.bullets = new_bullets
     
-    def draw_tank(self, tank, color):
+    def draw_tank(self, tank, color, dark_color):
         if self.render_mode != 'human' or self.screen is None:
-            return  # 如果不需要渲染或屏幕未初始化，直接返回
+            return  # Return if no rendering needed or screen not initialized
             
-        # 绘制坦克主体
-        tank_rect = pygame.Rect(
-            tank.position[0] * self.GRID_SIZE,
-            tank.position[1] * self.GRID_SIZE,
-            self.GRID_SIZE,
-            self.GRID_SIZE
-        )
-        pygame.draw.rect(self.screen, color, tank_rect)
+        # Calculate tank position and size
+        x = tank.position[0] * self.GRID_SIZE
+        y = tank.position[1] * self.GRID_SIZE
+        size = self.GRID_SIZE
         
-        # 绘制炮管
-        center_x = tank.position[0] * self.GRID_SIZE + self.GRID_SIZE // 2
-        center_y = tank.position[1] * self.GRID_SIZE + self.GRID_SIZE // 2
-        if tank.direction == 0:  # 上
-            pygame.draw.line(self.screen, color, (center_x, center_y), (center_x, center_y - self.GRID_SIZE))
-        elif tank.direction == 1:  # 右
-            pygame.draw.line(self.screen, color, (center_x, center_y), (center_x + self.GRID_SIZE, center_y))
-        elif tank.direction == 2:  # 下
-            pygame.draw.line(self.screen, color, (center_x, center_y), (center_x, center_y + self.GRID_SIZE))
-        elif tank.direction == 3:  # 左
-            pygame.draw.line(self.screen, color, (center_x, center_y), (center_x - self.GRID_SIZE, center_y))
+        # Calculate center point
+        center_x = x + size // 2
+        center_y = y + size // 2
+        radius = size // 2 - 4  # Slightly smaller to leave margin
+        
+        # Draw tank body (circle)
+        # Outer circle (dark color)
+        pygame.draw.circle(self.screen, dark_color, (center_x, center_y), radius + 2)
+        # Main body (main color)
+        pygame.draw.circle(self.screen, color, (center_x, center_y), radius)
+        
+        # Draw tank tracks
+        track_width = 4
+        track_length = size - 8
+        # Left track
+        pygame.draw.rect(self.screen, dark_color, 
+                        (x + 2, y + size//2 - track_width//2, track_length, track_width))
+        # Right track
+        pygame.draw.rect(self.screen, dark_color, 
+                        (x + 2, y + size//2 + track_width//2, track_length, track_width))
+        
+        # Draw turret (circle)
+        turret_radius = radius * 0.7
+        pygame.draw.circle(self.screen, dark_color, (center_x, center_y), turret_radius + 1)
+        pygame.draw.circle(self.screen, color, (center_x, center_y), turret_radius)
+        
+        # Draw barrel
+        barrel_length = size * 0.8
+        barrel_width = 6
+        if tank.direction == 0:  # Up
+            pygame.draw.rect(self.screen, dark_color, 
+                           (center_x - barrel_width//2, center_y - barrel_length, 
+                            barrel_width, barrel_length))
+        elif tank.direction == 1:  # Right
+            pygame.draw.rect(self.screen, dark_color, 
+                           (center_x, center_y - barrel_width//2, 
+                            barrel_length, barrel_width))
+        elif tank.direction == 2:  # Down
+            pygame.draw.rect(self.screen, dark_color, 
+                           (center_x - barrel_width//2, center_y, 
+                            barrel_width, barrel_length))
+        elif tank.direction == 3:  # Left
+            pygame.draw.rect(self.screen, dark_color, 
+                           (center_x - barrel_length, center_y - barrel_width//2, 
+                            barrel_length, barrel_width))
+        
+        # Add highlight effect
+        highlight_radius = radius * 0.3
+        highlight_pos = (center_x - radius//3, center_y - radius//3)
+        pygame.draw.circle(self.screen, self.TANK_HIGHLIGHT, highlight_pos, highlight_radius)
+        
+        # Add turret details
+        detail_radius = turret_radius * 0.5
+        pygame.draw.circle(self.screen, dark_color, (center_x, center_y), detail_radius)
+        pygame.draw.circle(self.screen, color, (center_x, center_y), detail_radius - 1)
+        
+        # Add barrel details
+        if tank.direction == 0:  # Up
+            pygame.draw.rect(self.screen, color, 
+                           (center_x - barrel_width//2 + 1, center_y - barrel_length, 
+                            barrel_width - 2, barrel_length))
+        elif tank.direction == 1:  # Right
+            pygame.draw.rect(self.screen, color, 
+                           (center_x, center_y - barrel_width//2 + 1, 
+                            barrel_length, barrel_width - 2))
+        elif tank.direction == 2:  # Down
+            pygame.draw.rect(self.screen, color, 
+                           (center_x - barrel_width//2 + 1, center_y, 
+                            barrel_width - 2, barrel_length))
+        elif tank.direction == 3:  # Left
+            pygame.draw.rect(self.screen, color, 
+                           (center_x - barrel_length, center_y - barrel_width//2 + 1, 
+                            barrel_length, barrel_width - 2))
     
     def draw(self):
-        """绘制游戏状态"""
+        """Draw game state"""
         if self.render_mode != 'human' or self.screen is None:
-            return  # 如果不需要渲染或屏幕未初始化，直接返回
+            return  # Return if no rendering needed or screen not initialized
             
-        # 填充背景
-        self.screen.fill(self.BLACK)
+        # Fill background
+        self.screen.fill(self.DARK_GRAY)
         
-        # 绘制地图
+        # Draw grid lines
+        for x in range(0, self.SCREEN_SIZE, self.GRID_SIZE):
+            pygame.draw.line(self.screen, self.GRID_COLOR, (x, 0), (x, self.SCREEN_SIZE))
+        for y in range(0, self.SCREEN_SIZE, self.GRID_SIZE):
+            pygame.draw.line(self.screen, self.GRID_COLOR, (0, y), (self.SCREEN_SIZE, y))
+        
+        # Draw map
         for x in range(self.MAP_SIZE):
             for y in range(self.MAP_SIZE):
                 if self.current_map.is_obstacle(x, y):
-                    # 绘制障碍物
+                    # Draw obstacle (brick wall effect)
                     obstacle_rect = pygame.Rect(
-                        x * self.GRID_SIZE,
-                        y * self.GRID_SIZE,
-                        self.GRID_SIZE,
-                        self.GRID_SIZE
+                        x * self.GRID_SIZE + 1,
+                        y * self.GRID_SIZE + 1,
+                        self.GRID_SIZE - 2,
+                        self.GRID_SIZE - 2
                     )
-                    pygame.draw.rect(self.screen, self.GRAY, obstacle_rect)
+                    pygame.draw.rect(self.screen, self.BRICK_COLOR, obstacle_rect)
+                    # Add brick texture
+                    for i in range(2):
+                        for j in range(2):
+                            brick = pygame.Rect(
+                                x * self.GRID_SIZE + 1 + i * (self.GRID_SIZE // 2),
+                                y * self.GRID_SIZE + 1 + j * (self.GRID_SIZE // 2),
+                                self.GRID_SIZE // 2 - 1,
+                                self.GRID_SIZE // 2 - 1
+                            )
+                            pygame.draw.rect(self.screen, (160, 82, 45), brick, 1)
         
-        # 绘制坦克
-        self.draw_tank(self.tanks[0], self.BLUE)
-        self.draw_tank(self.tanks[1], self.RED)
+        # Draw tanks
+        self.draw_tank(self.tanks[0], self.TANK_BLUE, self.TANK_BLUE_DARK)
+        self.draw_tank(self.tanks[1], self.TANK_RED, self.TANK_RED_DARK)
         
-        # 绘制子弹
+        # Draw bullets
         for bullet in self.bullets:
-            bullet_x, bullet_y = bullet[0], bullet[1]
-            bullet_rect = pygame.Rect(
-                bullet_x * self.GRID_SIZE + self.GRID_SIZE // 2 - 2,
-                bullet_y * self.GRID_SIZE + self.GRID_SIZE // 2 - 2,
-                4, 4
-            )
-            pygame.draw.rect(self.screen, self.WHITE, bullet_rect)
+            bullet_x = bullet[0] * self.GRID_SIZE + self.GRID_SIZE // 2
+            bullet_y = bullet[1] * self.GRID_SIZE + self.GRID_SIZE // 2
+            # Draw glowing bullet effect
+            pygame.draw.circle(self.screen, self.WHITE, (bullet_x, bullet_y), 4)
+            pygame.draw.circle(self.screen, self.BULLET_COLOR, (bullet_x, bullet_y), 2)
         
-        # 绘制游戏结束信息
+        # Draw game over information
         if self.game_over:
-            font = pygame.font.Font(None, 36)
-            text = font.render(f"玩家 {self.winner} 获胜！", True, self.WHITE)
+            # Create semi-transparent overlay
+            overlay = pygame.Surface((self.SCREEN_SIZE, self.SCREEN_SIZE))
+            overlay.set_alpha(128)
+            overlay.fill(self.BLACK)
+            self.screen.blit(overlay, (0, 0))
+            
+            # Draw win message
+            font = pygame.font.Font(None, 48)
+            text = font.render(f"player {self.winner} wins!", True, self.WHITE)
             text_rect = text.get_rect(center=(self.SCREEN_SIZE // 2, self.SCREEN_SIZE // 2))
+            
+            # Add text shadow effect
+            shadow = font.render(f"player {self.winner} wins!", True, self.DARK_GRAY)
+            shadow_rect = shadow.get_rect(center=(self.SCREEN_SIZE // 2 + 2, self.SCREEN_SIZE // 2 + 2))
+            self.screen.blit(shadow, shadow_rect)
             self.screen.blit(text, text_rect)
+            
+            # Add restart prompt
+            small_font = pygame.font.Font(None, 24)
+            restart_text = small_font.render("press R to restart or ESC to exit", True, self.LIGHT_GRAY)
+            restart_rect = restart_text.get_rect(center=(self.SCREEN_SIZE // 2, self.SCREEN_SIZE // 2 + 40))
+            self.screen.blit(restart_text, restart_rect)
         
         pygame.display.flip()
     
@@ -416,54 +520,54 @@ class SimplifiedGame:
         if not self.ai_opponent:
             return
         
-        # 简单的AI逻辑
-        # 1. 朝向玩家
+        # Simple AI logic
+        # 1. Face the player
         dx = self.tanks[0].position[0] - self.tanks[1].position[0]
         dy = self.tanks[0].position[1] - self.tanks[1].position[1]
         
-        # 决定移动方向
+        # Decide movement direction
         new_pos = self.tanks[1].position.copy()
         
-        # 优先水平移动
+        # Prioritize horizontal movement
         if abs(dx) > abs(dy):
             if dx > 0:
-                new_direction = 1  # 右
+                new_direction = 1  # Right
                 new_pos[0] = min(self.MAP_SIZE - 1, new_pos[0] + 1)
             else:
-                new_direction = 3  # 左
+                new_direction = 3  # Left
                 new_pos[0] = max(0, new_pos[0] - 1)
         else:
             if dy > 0:
-                new_direction = 2  # 下
+                new_direction = 2  # Down
                 new_pos[1] = min(self.MAP_SIZE - 1, new_pos[1] + 1)
             else:
-                new_direction = 0  # 上
+                new_direction = 0  # Up
                 new_pos[1] = max(0, new_pos[1] - 1)
         
-        # 检查碰撞
+        # Check collision
         if (new_pos[0], new_pos[1]) not in self.current_map.obstacles:
             self.tanks[1].update_position(new_pos)
             self.tanks[1].update_direction(new_direction)
         
-        # 发射子弹
-        if random.random() < 0.3:  # 30%的概率发射子弹
+        # Fire bullet
+        if random.random() < 0.3:  # 30% chance to fire
             self.bullets.append([self.tanks[1].position[0], self.tanks[1].position[1], self.tanks[1].direction, 2])
     
     def check_game_over(self):
-        # 游戏结束检查已移至update_bullets方法中
+        # Game over check moved to update_bullets method
         pass
     
     def close(self):
-        """关闭游戏，释放资源"""
+        """Close game and release resources"""
         try:
-            # 仅在渲染模式为human且pygame已初始化的情况下才调用pygame.quit()
+            # Only call pygame.quit() if in human render mode and pygame is initialized
             if self.render_mode == 'human' and pygame.get_init():
                 pygame.quit()
         except Exception as e:
-            pass  # 如果pygame已经关闭，忽略异常
+            pass  # Ignore exception if pygame is already closed
     
     def run(self):
-        """游戏主循环"""
+        """Game main loop"""
         clock = None
         if self.render_mode == 'human':
             clock = pygame.time.Clock()
@@ -472,31 +576,47 @@ class SimplifiedGame:
         while self.running:
             frame_count += 1
             
-            # 处理输入
+            # Handle input
             if self.render_mode == 'human':
                 self.handle_input()
             
             if not self.game_over:
-                # 更新子弹
+                # Update bullets
                 self.update_bullets()
                 
-                # 更新AI控制的坦克
+                # Update AI-controlled tanks
                 if self.ai_opponent or self.second_ai_type:
                     self.ai_interface.update_ai_controlled_tanks()
                 
-                # AI状态输出（每秒一次）
+                # AI status output (once per second)
                 if self.ai_opponent and frame_count % 10 == 0:
-                    print("\nAI状态更新:")
-                    print(f"坦克1 - 位置: {self.tanks[0].position}, 朝向: {self.tanks[0].direction}")
-                    print(f"坦克2 - 位置: {self.tanks[1].position}, 朝向: {self.tanks[1].direction}")
+                    print("\nAI Status Update:")
+                    print(f"Tank 1 - Position: {self.tanks[0].position}, Direction: {self.tanks[0].direction}")
+                    print(f"Tank 2 - Position: {self.tanks[1].position}, Direction: {self.tanks[1].direction}")
             
-            # 渲染游戏
+            # Render game
             self.draw()
             if self.render_mode == 'human':
                 pygame.display.flip()
-                clock.tick(10)  # 限制帧率为10 FPS
+                clock.tick(10)  # Limit to 10 FPS
         
         self.close()
+
+    def restart_game(self):
+        """重新开始游戏"""
+        # 重置游戏状态
+        self.game_over = False
+        self.winner = None
+        self.bullets = []
+        
+        # 重置坦克位置
+        self.tanks[0].position = [2, 2]
+        self.tanks[0].direction = 0
+        self.tanks[1].position = [self.MAP_SIZE - 3, self.MAP_SIZE - 3]
+        self.tanks[1].direction = 2
+        
+        # 重新生成障碍物
+        self.current_map.obstacles = self.generate_obstacles()
 
 def main(ai_opponent=False, ai_type='dqn', second_ai_type=None, render_mode='human', agent_path=None):
     game = SimplifiedGame(ai_opponent=ai_opponent, ai_type=ai_type, second_ai_type=second_ai_type, render_mode=render_mode, agent_path=agent_path)
