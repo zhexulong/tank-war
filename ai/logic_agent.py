@@ -26,7 +26,6 @@ class LogicAgent(BaseAgent):
         tanks = []
         for t in raw_tanks:
             if 'position' not in t:
-                # 简化格式
                 tanks.append({
                     'position': [t.get('x', 0), t.get('y', 0)],
                     'direction': t.get('angle', t.get('direction', 0)),
@@ -41,7 +40,6 @@ class LogicAgent(BaseAgent):
             # 假设第二个对象是AI控制的坦克（player_id=2）
             my_tank = tanks[1]
             enemy_tank = tanks[0]
-            # 打印位置信息和朝向
             px, py = my_tank['position']
             ex, ey = enemy_tank['position']
             pd = my_tank['direction'] * 90
@@ -51,17 +49,11 @@ class LogicAgent(BaseAgent):
             print(f"- 敌人位置: ({ex:.2f}, {ey:.2f})")
             print(f"- 敌人朝向: {ed:.1f}度")
         
-        # 创建求解器
         self.solver = Solver()
         self.vars = {}
         self._init_vars()
         
-        # 构建约束条件
         clauses = []
-        
-        # 躲避子弹约束
-        # self._build_dodge_clauses(state)
-        
         # 追踪敌人约束
         next_action= self._build_chase_clauses(state)
         if next_action==[[self._action_to_var("forward")]] and self._is_blocked(state):
@@ -69,7 +61,6 @@ class LogicAgent(BaseAgent):
         else:
             clauses.extend(next_action)
         
-        # 添加所有约束到求解器
         if self.debug:
             print("2. 生成约束条件:")
             print(f"- 总约束数: {len(clauses)}")
@@ -83,18 +74,16 @@ class LogicAgent(BaseAgent):
             print("求解器状态:")
             print(f"- 约束数量: {len(self.solver.assertions())}")
         
-        # 求解
         if self.solver.check() == sat:
             model = self.solver.model()
             action = self._extract_action(model)
         else:
-            # 在求解失败时，打印求解器的状态信息和无法满足的约束
             print("- 求解失败，检查以下约束：")
             for clause in self.solver.assertions():
                 print(f"  约束: {clause}")
             print("求解器状态：")
-            print(self.solver.check())  # 打印求解失败的原因
-            action = np.random.randint(0, 5)  # 在无解情况下随机选择动作
+            print(self.solver.check())  
+            action = np.random.randint(0, 5) 
             print(f"- 随机选择动作: {self._action_to_str(action)}")
         
         if self.debug:
@@ -104,7 +93,6 @@ class LogicAgent(BaseAgent):
     
     def _init_vars(self):
         """初始化变量"""
-        # 为每个动作创建布尔变量
         actions = ["stay", "forward", "turn_left", "turn_right", "fire"]
         self.action_vars = []
         for action in actions:
@@ -112,14 +100,6 @@ class LogicAgent(BaseAgent):
             self.vars[action] = var
             self.action_vars.append(var)
     
-    # def _build_dodge_clauses(state: Dict) -> List:
-    #     clauses = []
-    #     #判断是否有敌方子弹
-    #     bullets=state['bullets']
-    #     for bullet in bullet:
-    #         #写死敌方id
-    #         if bullet[2]==1:
-                #如果在直线上并且只有两格了
                 
     def _build_chase_clauses(self, state: Dict) -> List:
         """构建追踪敌人的约束"""
@@ -129,8 +109,8 @@ class LogicAgent(BaseAgent):
         enemy_tank = tanks[0]  # player_id为1的坦克
         
         # 计算与敌人的坐标差值
-        dx = enemy_tank['position'][0] - my_tank['position'][0]  # 敌人x - 自己x
-        dy = enemy_tank['position'][1] - my_tank['position'][1]  # 敌人y - 自己y
+        dx = enemy_tank['position'][0] - my_tank['position'][0] 
+        dy = enemy_tank['position'][1] - my_tank['position'][1] 
         
         # 检查自己当前朝向（0-上，1-右，2-下，3-左）
         tank_angle = my_tank['direction']
@@ -138,17 +118,17 @@ class LogicAgent(BaseAgent):
         if abs(dx) < abs(dy):
             # 走向同一竖线
             if dx > 0:
-                #通过选转，最后朝右
+                #通过旋转，最后朝右
                 if tank_angle==0:
-                    clauses.append([self._action_to_var("turn_right")])  # 向右转
+                    clauses.append([self._action_to_var("turn_right")])  
                 elif tank_angle==1:
                     clauses.append([self._action_to_var("forward")])
                 else:
-                    clauses.append([self._action_to_var("turn_left")])  # 向左转
+                    clauses.append([self._action_to_var("turn_left")])  
             elif dx < 0:
-                #通过选转，最后朝左
+                #通过旋转，最后朝左
                 if tank_angle==0:
-                    clauses.append([self._action_to_var("turn_left")])  # 向左转
+                    clauses.append([self._action_to_var("turn_left")]) 
                 elif tank_angle==3:
                     clauses.append([self._action_to_var("forward")])
                 else:
@@ -158,7 +138,7 @@ class LogicAgent(BaseAgent):
                 if dy > 0:
                     #需要朝下
                     if tank_angle==3:
-                        clauses.append([self._action_to_var("turn_left")])  # 向左转
+                        clauses.append([self._action_to_var("turn_left")])  
                     elif tank_angle==2:
                         clauses.append([self._action_to_var("fire")])
                     else:
@@ -166,7 +146,7 @@ class LogicAgent(BaseAgent):
                 else :
                     #需要朝上
                     if tank_angle==1:
-                        clauses.append([self._action_to_var("turn_left")])  # 向左转
+                        clauses.append([self._action_to_var("turn_left")]) 
                     elif tank_angle==0:
                         clauses.append([self._action_to_var("fire")])
                     else:
@@ -175,26 +155,26 @@ class LogicAgent(BaseAgent):
             # 走向统一横线
             if dy > 0:
                 # 需要朝下
-                if tank_angle == 3:  # 朝上
-                    clauses.append([self._action_to_var("turn_left")])  # 向左转
-                elif tank_angle == 2:  # 朝下
-                    clauses.append([self._action_to_var("forward")])  # 向前
+                if tank_angle == 3:  
+                    clauses.append([self._action_to_var("turn_left")])  
+                elif tank_angle == 2:  
+                    clauses.append([self._action_to_var("forward")]) 
                 else:
-                    clauses.append([self._action_to_var("turn_right")])  # 向右转
+                    clauses.append([self._action_to_var("turn_right")])  
             elif dy < 0:
                 # 需要朝上
-                if tank_angle == 1:  # 朝右
-                    clauses.append([self._action_to_var("turn_left")])  # 向左转
-                elif tank_angle == 0:  # 朝上
-                    clauses.append([self._action_to_var("forward")])  # 向前
+                if tank_angle == 1: 
+                    clauses.append([self._action_to_var("turn_left")])
+                elif tank_angle == 0:  
+                    clauses.append([self._action_to_var("forward")])  
                 else:
-                    clauses.append([self._action_to_var("turn_right")])  # 向右转
+                    clauses.append([self._action_to_var("turn_right")]) 
             else:
                  #检查是不是在射击方向上
                 if dx > 0:
                     #需要朝右
                     if tank_angle==2:
-                        clauses.append([self._action_to_var("turn_left")])  # 向左转
+                        clauses.append([self._action_to_var("turn_left")])  
                     elif tank_angle==1:
                         clauses.append([self._action_to_var("fire")])
                     else:
@@ -202,7 +182,7 @@ class LogicAgent(BaseAgent):
                 else :
                     #需要朝左
                     if tank_angle==0:
-                        clauses.append([self._action_to_var("turn_left")])  # 向左转
+                        clauses.append([self._action_to_var("turn_left")]) 
                     elif tank_angle==3:
                         clauses.append([self._action_to_var("fire")])
                     else:
@@ -215,9 +195,9 @@ class LogicAgent(BaseAgent):
     def _is_blocked(self, state: Dict) -> bool:
         """判断前方是否有障碍物"""
         tanks = state['tanks']
-        my_tank = tanks[1]  # player_id为2的坦克
+        my_tank = tanks[1]  
         current_x, current_y = my_tank['position'][0], my_tank['position'][1]
-        current_angle = my_tank['direction']  # 获取当前坦克位置和朝向（0-上，1-右，2-下，3-左）
+        current_angle = my_tank['direction']  
         
         target_x = current_x 
         target_y = current_y 
@@ -282,7 +262,6 @@ class LogicExpertAgent(LogicAgent):
         tanks = []
         for t in raw_tanks:
             if 'position' not in t:
-                # 简化格式
                 tanks.append({
                     'position': [t.get('x', 0), t.get('y', 0)],
                     'direction': t.get('angle', t.get('direction', 0)),
