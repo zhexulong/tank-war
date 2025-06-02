@@ -13,7 +13,7 @@ from ai.base_agent import BaseAgent
 class PPONetwork(nn.Module):
     """PPO策略-价值网络"""
     
-    def __init__(self, input_shape: Dict, action_dim: int):
+    def __init__(self, input_shape: Dict, action_dim: int, logic_agent_pos_dim: int = 2):
         super(PPONetwork, self).__init__()
         
         # 计算输入维度
@@ -49,13 +49,22 @@ class PPONetwork(nn.Module):
             nn.Linear(64, 1)
         )
         
+        # Logic Agent位置预测头
+        self.logic_pos_head = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.LayerNorm(64),
+            nn.ReLU(),
+            nn.Linear(64, logic_agent_pos_dim)
+        )
+        
         # 使用正交初始化
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 nn.init.orthogonal_(m.weight, gain=np.sqrt(2))
-                nn.init.constant_(m.bias, 0)
-    def forward(self, x: Dict) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """前向传播，返回策略分布、对数概率和状态价值"""
+                nn.init.constant_(m.bias, 0)    
+                
+    def forward(self, x: Dict) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """前向传播，返回策略分布、对数概率、状态价值和Logic Agent位置预测"""
         # 展平所有输入
         map_flat = x['map'].flatten(start_dim=1)
         tanks_flat = x['tanks'].flatten(start_dim=1)
@@ -74,7 +83,10 @@ class PPONetwork(nn.Module):
         
         value = self.value_head(shared_features)
         
-        return probs, log_probs, value
+        # Logic Agent位置预测
+        logic_pos = self.logic_pos_head(shared_features)
+        
+        return probs, log_probs, value, logic_pos
 
 
 class PPOAgent(BaseAgent):
@@ -86,15 +98,16 @@ class PPOAgent(BaseAgent):
         self.device = device
         
         # 创建网络
-        self.network = PPONetwork(state_shape, action_dim).to(device)
+        self.network = PPONetwork(state_shape, action_dim, logic_agent_pos_dim=2).to(device)
         self.optimizer = optim.Adam(self.network.parameters(), lr=1e-4, eps=1e-5)  # 调整学习率和epsilon
         
         # PPO超参数
         self.gamma = 0.99  # 折扣因子
         self.gae_lambda = 0.95  # GAE参数
         self.clip_epsilon = 0.2  # PPO截断参数
-        self.entropy_coef = 0.03  # 熵正则化系数
+        self.entropy_coef = 0.02  # 熵正则化系数
         self.value_coef = 0.1  # 价值损失系数
+        self.logic_pos_coef = 0.05  # Logic Agent位置预测损失系数
         self.max_grad_norm = 0.5  # 梯度截断
         
         # 经验缓冲区
@@ -103,12 +116,11 @@ class PPOAgent(BaseAgent):
         
         # 训练相关
         self.train_step = 0
-        
     def select_action(self, state: Dict, training: bool = True) -> int:
         """选择动作"""
         with torch.no_grad():            
             state_tensor = self._dict_to_tensor(state)
-            policy, log_probs, value = self.network(state_tensor)
+            policy, log_probs, value, logic_pos_pred = self.network(state_tensor)
             
             if training:
                 # 根据策略分布采样
@@ -121,7 +133,8 @@ class PPOAgent(BaseAgent):
                     'action': action.item(),
                     'log_prob': log_prob.item(),
                     'value': value.item(),
-                    'policy': policy.cpu().numpy()
+                    'policy': policy.cpu().numpy(),
+                    'logic_pos_pred': logic_pos_pred.cpu().numpy()
                 }
                 
                 return action.item()
@@ -155,7 +168,6 @@ class PPOAgent(BaseAgent):
         self.train_step += 1
         print(f"训练步骤: {self.train_step}, 平均损失: {total_loss / max(num_updates, 1):.4f}")
         return total_loss / max(num_updates, 1)
-    
     def _update_network(self, batch: Dict) -> float:
         """更新网络参数"""
         states = self._batch_dict_to_tensor(batch['states'])
@@ -163,6 +175,7 @@ class PPOAgent(BaseAgent):
         old_log_probs = torch.tensor(batch['log_probs'], dtype=torch.float32, device=self.device)
         returns = torch.tensor(batch['returns'], dtype=torch.float32, device=self.device)
         advantages = torch.tensor(batch['advantages'], dtype=torch.float32, device=self.device)
+        logic_agent_next_pos = torch.tensor(batch['logic_agent_next_positions'], dtype=torch.float32, device=self.device)
         
         # 标准化优势，添加检查以避免零方差
         adv_mean = advantages.mean()
@@ -170,7 +183,7 @@ class PPOAgent(BaseAgent):
         if adv_std > 0:
             advantages = (advantages - adv_mean) / (adv_std + 1e-8)
           # 前向传播
-        policy, log_probs, values = self.network(states)
+        policy, log_probs, values, logic_pos_pred = self.network(states)
         values = values.squeeze(-1)  # 确保维度匹配
         
         # 计算策略损失
@@ -194,12 +207,15 @@ class PPOAgent(BaseAgent):
             entropy = action_dist.entropy().mean()
             entropy_loss = -self.entropy_coef * entropy
             
+            # 计算Logic Agent位置预测损失
+            logic_pos_loss = F.mse_loss(logic_pos_pred, logic_agent_next_pos)
+            
         except Exception as e:
             print(f"警告：策略计算出错: {e}")
             return 0.0
         
-        # 总损失
-        total_loss = policy_loss + self.value_coef * value_loss + entropy_loss
+        # 总损失 (包括Logic Agent位置预测损失)
+        total_loss = policy_loss + self.value_coef * value_loss + entropy_loss + self.logic_pos_coef * logic_pos_loss
         
         # 反向传播
         self.optimizer.zero_grad()
@@ -324,7 +340,6 @@ class PPOAgent(BaseAgent):
     def load_state_dict(self, state_dict: dict):
         """加载网络状态字典"""
         self.network.load_state_dict(state_dict)
-    
     def save_checkpoint(self, path: str):
         """保存完整检查点"""
         checkpoint = {
@@ -335,10 +350,10 @@ class PPOAgent(BaseAgent):
             'gae_lambda': self.gae_lambda,
             'clip_epsilon': self.clip_epsilon,
             'entropy_coef': self.entropy_coef,
-            'value_coef': self.value_coef
+            'value_coef': self.value_coef,
+            'logic_pos_coef': self.logic_pos_coef  # 添加Logic Agent位置预测损失系数
         }
         torch.save(checkpoint, path)
-    
     def load_checkpoint(self, path: str):
         """加载完整检查点"""
         checkpoint = torch.load(path, map_location=self.device)
@@ -350,6 +365,7 @@ class PPOAgent(BaseAgent):
         self.clip_epsilon = checkpoint.get('clip_epsilon', self.clip_epsilon)
         self.entropy_coef = checkpoint.get('entropy_coef', self.entropy_coef)
         self.value_coef = checkpoint.get('value_coef', self.value_coef)
+        self.logic_pos_coef = checkpoint.get('logic_pos_coef', self.logic_pos_coef)  # 加载Logic Agent位置预测损失系数
     
     def save(self, path: str):
         """保存模型"""
@@ -380,11 +396,11 @@ class PPOBuffer:
         self.values = []
         self.advantages = []
         self.returns = []
+        self.logic_agent_next_positions = []  # 新增：存储Logic Agent下一步位置
         
     def push(self, state: Dict, action: int, reward: float, next_state: Dict, done: bool):
         """兼容性方法：存储经验（与DQN接口兼容）"""
         self.store(state, action, reward, next_state, done)
-    
     def store(self, state: Dict, action: int, reward: float, next_state: Dict, done: bool, info: Dict = None):
         """存储经验"""
         self.states.append(state)
@@ -398,6 +414,14 @@ class PPOBuffer:
             self.log_probs.append(info['log_prob'])
         if info and 'value' in info:
             self.values.append(info['value'])
+        
+        # 新增：存储Logic Agent下一步位置
+        if info and 'logic_agent_next_pos' in info:
+            self.logic_agent_next_positions.append(info['logic_agent_next_pos'])
+        else:
+            # 如果没有提供Logic Agent位置，使用默认值[0.0, 0.0]
+            self.logic_agent_next_positions.append([0.0, 0.0])
+
     
     def compute_advantages_and_returns(self, gamma: float, gae_lambda: float):
         """计算优势和回报"""
@@ -426,7 +450,7 @@ class PPOBuffer:
         
         self.advantages = advantages
         self.returns = returns
-    
+
     def get_batches(self, batch_size: int):
         """获取训练批次"""
         indices = list(range(len(self.states)))
@@ -441,7 +465,8 @@ class PPOBuffer:
                 'actions': [self.actions[i] for i in batch_indices],
                 'log_probs': [self.log_probs[i] if i < len(self.log_probs) else 0.0 for i in batch_indices],
                 'returns': [self.returns[i] for i in batch_indices],
-                'advantages': [self.advantages[i] for i in batch_indices]
+                'advantages': [self.advantages[i] for i in batch_indices],
+                'logic_agent_next_positions': [self.logic_agent_next_positions[i] if i < len(self.logic_agent_next_positions) else [0.0, 0.0] for i in batch_indices]
             }
             
             yield batch
@@ -457,6 +482,7 @@ class PPOBuffer:
         self.values.clear()
         self.advantages.clear()
         self.returns.clear()
+        self.logic_agent_next_positions.clear()  # 清空Logic Agent下一步位置
     
     def __len__(self):
         return len(self.states)

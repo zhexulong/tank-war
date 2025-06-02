@@ -217,14 +217,23 @@ def worker_collect_episode_data_ppo(args_bundle):
         
         final_reward_for_rl = step_rewards[0] + step_expert_reward # RL是玩家1
         
+        # 获取Logic Agent在next_state中的位置
+        logic_agent_next_pos = [0.0, 0.0]  # 默认位置
+        if 'tanks' in next_state and isinstance(next_state['tanks'], list) and len(next_state['tanks']) > 1:
+            # Logic agent是玩家2 (索引1)
+            logic_tank = next_state['tanks'][1]
+            if isinstance(logic_tank, dict) and 'x' in logic_tank and 'y' in logic_tank:
+                logic_agent_next_pos = [float(logic_tank['x']), float(logic_tank['y'])]
+
         # 存储PPO所需的信息
         if hasattr(rl_agent_worker, 'last_action_info'):
             log_prob = rl_agent_worker.last_action_info.get('log_prob', 0.0)
             value = rl_agent_worker.last_action_info.get('value', 0.0)
             rl_agent_worker.store_transition(state, rl_action, final_reward_for_rl, next_state, done_val, 
-                                            {'log_prob': log_prob, 'value': value})
+                                            {'log_prob': log_prob, 'value': value, 'logic_agent_next_pos': logic_agent_next_pos})
         else:
-            rl_agent_worker.store_transition(state, rl_action, final_reward_for_rl, next_state, done_val)
+            rl_agent_worker.store_transition(state, rl_action, final_reward_for_rl, next_state, done_val, 
+                                            {'logic_agent_next_pos': logic_agent_next_pos})
         
         state = next_state
         episode_reward_val += final_reward_for_rl
@@ -577,8 +586,6 @@ def train_against_logic(
                             'expert_reward_init': expert_reward_init,
                             'expert_decay_factor': expert_decay_factor
                         }
-                        
-                        # 文件名使用当前episode数
                         chkpt_path = os.path.join(model_dir, f"rl_vs_logic_checkpoint_{check_ep}.pt")
                         torch.save(checkpoint_data, chkpt_path)
                         print(f"已保存检查点到: {chkpt_path}")
@@ -989,9 +996,9 @@ def train_ppo_against_logic(
                                            worker_agent.buffer.rewards,
                                            worker_agent.buffer.next_states,
                                            worker_agent.buffer.dones,
-                                           zip(worker_agent.buffer.log_probs, worker_agent.buffer.values)):
-                            s, a, r, ns, d, (lp, v) = exp_data
-                            ppo_agent.store_transition(s, a, r, ns, d, {'log_prob': lp, 'value': v})
+                                           zip(worker_agent.buffer.log_probs, worker_agent.buffer.values, worker_agent.buffer.logic_agent_next_positions)):
+                            s, a, r, ns, d, (lp, v, logic_pos) = exp_data
+                            ppo_agent.store_transition(s, a, r, ns, d, {'log_prob': lp, 'value': v, 'logic_agent_next_pos': logic_pos})
                     
                     # 训练主PPO智能体
                     loss_item = ppo_agent.train(batch_size=ppo_batch_size, epochs=ppo_epochs)
