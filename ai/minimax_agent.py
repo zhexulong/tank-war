@@ -7,9 +7,9 @@ from ai.base_agent import BaseAgent
 POSI_INFI = 2147483647
 NEGA_INFI = -2147483647
 DEFAULT_WEIGHTS = {
-    'w1': 0.4,  # Ally risk
-    'w2': 0.3,  # Enemy risk
-    'w3': 0.2,  # Win reward
+    'w1': 1,  # Ally risk
+    'w2': 30,  # Enemy risk
+    'w3': 1,  # Win reward
     'w4': 0.1   # Distance punishment
 }
 
@@ -34,21 +34,18 @@ class MinimaxAgent(BaseAgent):
         Returns:
             action: 0=no_action, 1=forward, 2=rotate_left, 3=rotate_right, 4=fire
         """
-        _, action = minimax_tank(
+        _, action = alpha_beta_tank(
             obs_state=state,
             player_id=self._get_player_id(state),
             depth=self.depth,
+            alpha= NEGA_INFI,
+            beta = POSI_INFI,
             is_maximizing=True,
-            **self.weights
         )
         return action or 0  # Default to no action
     
     def _get_player_id(self, state: Dict) -> int:
         """Determine player ID from state"""
-        # Find our tank in the tanks list
-        for tank in state['tanks']:
-            if tank['player_id'] == 2:  # We're always player 2 in simplified version
-                return 2
         return 1  # Fallback to player 1
 
 
@@ -110,6 +107,7 @@ def alpha_beta_tank(obs_state: Dict,
             if score > value:
                 value, best_action = score, action
             alpha = max(alpha, value)
+            #print("action,score",action,score)
             if alpha >= beta:
                 break
         return value, best_action
@@ -143,7 +141,7 @@ def get_available_tank_actions(obs_state: Dict, player_id: int) -> List[int]:
         return [0]  # Only no-action if tank not found
     
     # No action is always available
-    actions.append(0)
+    #actions.append(0)
     
     # Get tank's current position and direction
     pos = our_tank['position']
@@ -152,28 +150,26 @@ def get_available_tank_actions(obs_state: Dict, player_id: int) -> List[int]:
     # Check forward movement
     new_pos = list(pos)
     if direction == 0:  # Up
-        new_pos[1] = max(0, new_pos[1] - 1)
+        new_pos[1] = new_pos[1] - 1
     elif direction == 1:  # Right
-        new_pos[0] = min(len(obs_state['map'][0]) - 1, new_pos[0] + 1)
+        new_pos[0] =  new_pos[0] + 1
     elif direction == 2:  # Down
-        new_pos[1] = min(len(obs_state['map']) - 1, new_pos[1] + 1)
+        new_pos[1] = new_pos[1] + 1
     elif direction == 3:  # Left
-        new_pos[0] = max(0, new_pos[0] - 1)
+        new_pos[0] = new_pos[0] - 1
     
     # Check if new position is valid (not blocked by obstacle or other tank)
     if tuple(new_pos) not in obs_state['obstacles']:
         # Check for tank collision
         other_tank_positions = {tuple(tank['position']) for tank in obs_state['tanks'] if tank != our_tank}
-        if tuple(new_pos) not in other_tank_positions:
+        if tuple(new_pos) not in other_tank_positions and all(1 < c < len(obs_state['map']) for c in new_pos):
+            #print("new_pos",new_pos)
             actions.append(1)  # Forward movement possible
     
     # Rotation is always possible
     actions.extend([2, 3])  # Left and right rotation
     
-    # Check if we can fire (max 4 bullets per tank)
-    our_bullets = sum(1 for bullet in obs_state['bullets'] if bullet[3] == player_id)
-    if our_bullets < 4:
-        actions.append(4)
+    actions.append(4)
     
     return actions
 
@@ -342,7 +338,9 @@ def is_tank_action_valid(obs_state: Dict, action: int, player_id: int) -> bool:
 
 def evaluate_tank_state(obs_state: Dict, player_id: int, **weights) -> float:
     """Evaluation function using the evaluation module"""
-    return evaluate_state(obs_state, player_id, **weights)
+    score = evaluate_state(obs_state, player_id, **weights)
+    #print("score is",score)
+    return score
 
 def is_game_over(obs_state: Dict) -> bool:
     """Check if the game is over based on tank health"""
