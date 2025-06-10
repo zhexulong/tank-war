@@ -1,6 +1,8 @@
 import numpy as np
 from typing import Dict
 from ai.logic_agent import LogicAgent
+from ai.minimax_agent import MinimaxAgent
+from ai.naive_minimax_agent import NaiveMinimaxAgent
 
 class SimplifiedAIInterface:
     """简化版游戏的AI接口"""
@@ -14,6 +16,10 @@ class SimplifiedAIInterface:
         """加载智能体"""
         if agent_type == 'logic':
             agent = LogicAgent()
+        elif agent_type == 'minimax':
+            agent = MinimaxAgent(depth=4)  # You can adjust the depth as needed
+        elif agent_type == 'naive_minimax':
+            agent = NaiveMinimaxAgent(depth=4)  # Same depth as regular minimax
         else:  # dqn
             from ai.agent import DQNAgent
             import torch
@@ -55,7 +61,7 @@ class SimplifiedAIInterface:
                 if observation is None:
                     continue
                 
-                if isinstance(agent, LogicAgent):
+                if isinstance(agent, (LogicAgent, MinimaxAgent, NaiveMinimaxAgent)):
                     action = agent.select_action(observation)
                 else:
                     action = agent.select_action(observation)
@@ -64,13 +70,13 @@ class SimplifiedAIInterface:
     
     def _execute_action(self, tank, action):
         """执行AI的动作
-        对于 LogicAgent:
+        对于 LogicAgent, MinimaxAgent, NaiveMinimaxAgent:
         action: 0-不动, 1-前进, 2-左转, 3-右转, 4-开火
         
         对于 DQNAgent:  
         action: 0-不动, 1-前进, 2-后退, 3-左转, 4-右转, 5-开火
         """
-        if isinstance(self.agents[tank.player_id], LogicAgent):
+        if isinstance(self.agents[tank.player_id], (LogicAgent, MinimaxAgent, NaiveMinimaxAgent)):
             # Logic agent 动作映射: 0-不动, 1-前进, 2-左转, 3-右转, 4-开火
             if action == 0:  # 不动
                 pass
