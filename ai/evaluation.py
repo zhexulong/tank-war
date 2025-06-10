@@ -8,17 +8,18 @@ def evaluate_state(obs_state, player_id, w1, w2, w3, w4):
     
     # Calculate rewards and punishments
     # Win/lose reward based on game state
-    R_win = 100 if obs_state['game_over'] and obs_state['winner'] == player_id else 0.0
-    R_lose = 100 if obs_state['game_over'] and obs_state['winner'] != player_id and obs_state['winner'] is not None else 0.0
+    R_win = 1000 if obs_state['game_over'] and obs_state['winner'] == player_id else 0.0
+    R_lose = 1000 if obs_state['game_over'] and obs_state['winner'] != player_id and obs_state['winner'] is not None else 0.0
 
     # Distance penalty
     P_distance = distance_penalty(obs_state, player_id)
     
     # Strategic rewards
-    S_path, S_firing = evaluate_strategic_position(obs_state, player_id)
+    #S_path, S_firing = evaluate_strategic_position(obs_state, player_id)
     
-    #print("R_ally,R_enemy,R_win,R_lose,P_distance,S_path,S_firing: ",R_ally,R_enemy,R_win,R_lose,P_distance,S_path,S_firing)
-    return -w1*R_ally + w2*(R_enemy + S_firing) + w3*(R_win - R_lose + S_path) - w4*P_distance
+    #print("-w1*R_ally , w2*(R_enemy + S_firing) , w3*(R_win - R_lose + S_path) ,- w4*P_distance: ",-w1*R_ally,w2*(R_enemy + S_firing),w3*(R_win - R_lose + S_path),-w4*P_distance)
+    #return -w1*R_ally + w2*(R_enemy + S_firing) + w3*(R_win - R_lose + S_path) - w4*P_distance
+    return -w1*R_ally + w2*(R_enemy ) + w3*(R_win - R_lose ) - w4*P_distance
 
 
 def distance_penalty(obs_state: Dict, player_id: int) -> float:
@@ -166,31 +167,42 @@ def risk_evaluation(obs_state: Dict, player_id: int) -> Tuple[float, float]:
                 if is_approaching:
                     if is_direct_hit:
                         # Direct hit potential: highest risk
-                        bullet_risk += 2.0 * np.exp(-dist/3)  # Slower decay for direct hits
+                        # For direct hits, maintain high risk even at distance
+                        bullet_risk += 4.0 * (0.8 + 0.2 * np.exp(-dist/5))  # Much slower decay
                     elif is_near_hit:
                         # Near hit: medium risk
-                        bullet_risk += 1.0 * np.exp(-dist/2)  # Medium decay for near hits
+                        bullet_risk += 2.0 * (0.6 + 0.4 * np.exp(-dist/4))  # Slower decay for near hits
                     else:
-                        # Distant bullet: low risk
-                        bullet_risk += 0.2 * np.exp(-dist)  # Fast decay for distant bullets
+                        # Distant bullet: low risk but still consider alignment
+                        bullet_risk += 0.5 * (0.4 + 0.6 * np.exp(-dist/3))  # Maintain some base risk
+                
+                # Add additional risk if bullet is in the same line regardless of distance
+                if is_direct_hit and is_approaching:
+                    # Add a constant risk factor for being in the same line
+                    bullet_risk += 1.0  # Base risk for being in line of fire
+                    
+                    # Check if there are obstacles between bullet and tank
+                    has_obstacle = False
+                    if align_dir == 0:  # Vertical alignment
+                        min_y = min(bullet_pos[1], tank_pos[1])
+                        max_y = max(bullet_pos[1], tank_pos[1])
+                        for y in range(int(min_y), int(max_y)):
+                            if (int(bullet_pos[0]), y) in obs_state['obstacles']:
+                                has_obstacle = True
+                                break
+                    else:  # Horizontal alignment
+                        min_x = min(bullet_pos[0], tank_pos[0])
+                        max_x = max(bullet_pos[0], tank_pos[0])
+                        for x in range(int(min_x), int(max_x)):
+                            if (x, int(bullet_pos[1])) in obs_state['obstacles']:
+                                has_obstacle = True
+                                break
+                    
+                    if not has_obstacle:
+                        bullet_risk += 1.0  # Additional risk if no obstacles in path
         
         total_risk += bullet_risk  # No need to cap since we use exponential decay
         
-        # 3. Obstacle coverage risk (less cover = more risk)
-        cover_score = 0
-        pos_x, pos_y = int(tank_pos[0]), int(tank_pos[1])
-        
-        for dy in [-1, 0, 1]:
-            for dx in [-1, 0, 1]:
-                if dx == 0 and dy == 0:
-                    continue
-                nx, ny = pos_x + dx, pos_y + dy
-                if 0 <= nx < len(obs_state['map'][0]) and 0 <= ny < len(obs_state['map']):
-                    if (nx, ny) in obs_state['obstacles']:
-                        cover_score += 1
-        
-        coverage_risk = 1.0 - (cover_score / 8)  # Normalized [0,1]
-        total_risk += coverage_risk * 0.2
         
         return min(total_risk, 1.0)  # Cap final risk at 1.0
     
@@ -211,7 +223,7 @@ def risk_evaluation(obs_state: Dict, player_id: int) -> Tuple[float, float]:
     R_enemy = calculate_risk(enemy_tank)
     
     return R_ally, R_enemy
-
+'''
 def evaluate_strategic_position(obs_state: Dict, player_id: int) -> Tuple[float, float]:
     """Evaluate strategic advantages of position and firing opportunities
     Returns: (path_score, firing_score)
@@ -238,7 +250,7 @@ def evaluate_strategic_position(obs_state: Dict, player_id: int) -> Tuple[float,
     firing_score = evaluate_firing_opportunity(obs_state, our_tank, enemy_tank)
     
     return path_score, firing_score
-
+'''
 def evaluate_path_clearance(obs_state: Dict, our_pos: np.ndarray, enemy_pos: np.ndarray) -> float:
     """Evaluate how clear the path is towards the enemy"""
     # Get direction to enemy
@@ -265,7 +277,7 @@ def evaluate_path_clearance(obs_state: Dict, our_pos: np.ndarray, enemy_pos: np.
     path_score = 1.0 / (1.0 + obstacles_in_path) * np.log1p(distance)
     
     return path_score
-
+'''
 def evaluate_firing_opportunity(obs_state: Dict, our_tank: Dict, enemy_tank: Dict) -> float:
     """Evaluate firing opportunities considering bullet advantage and position"""
     our_pos = np.array(our_tank['position'])
@@ -323,3 +335,4 @@ def evaluate_firing_opportunity(obs_state: Dict, our_tank: Dict, enemy_tank: Dic
     firing_score = base_firing_score * (1.0 + direction_score)
     
     return firing_score
+'''
