@@ -339,6 +339,7 @@ class SimplifiedGame:
                         if x == self.tanks[1].position[0] and y == self.tanks[1].position[1]:
                             self.game_over = True
                             self.winner = 1
+                            print("Player 1 wins")  # Add print statement
                             break
                     if self.game_over:
                         continue
@@ -347,6 +348,7 @@ class SimplifiedGame:
                     if x == self.tanks[0].position[0] and y == self.tanks[0].position[1]:
                         self.game_over = True
                         self.winner = 2
+                        print("Player 2 wins")  # Add print statement
                         break
                 if self.game_over:
                     continue
@@ -587,12 +589,18 @@ class SimplifiedGame:
                 # Update AI-controlled tanks
                 if self.ai_opponent or self.second_ai_type:
                     self.ai_interface.update_ai_controlled_tanks()
-                
+                '''
                 # AI status output (once per second)
                 if self.ai_opponent and frame_count % 10 == 0:
                     print("\nAI Status Update:")
                     print(f"Tank 1 - Position: {self.tanks[0].position}, Direction: {self.tanks[0].direction}")
                     print(f"Tank 2 - Position: {self.tanks[1].position}, Direction: {self.tanks[1].direction}")
+                '''
+            else:
+                # In non-render mode, terminate the game when there's a winner
+                if self.render_mode != 'human':
+                    self.running = False
+                    break
             
             # Render game
             self.draw()
