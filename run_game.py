@@ -24,14 +24,13 @@ def main():
     parser.add_argument('--mode', type=str, default='human_vs_ai',
                         choices=['human_vs_human', 'human_vs_ai', 'ai_vs_ai', 
                                 'logic_ai_vs_human', 'logic_ai_vs_ai', 'train',
-                                'human_vs_minimax', 'logic_ai_vs_minimax',
-                                'logic_vs_naive_minimax'],
+                                'human_vs_minimax', 'logic_ai_vs_minimax'],
                         help='游戏模式')
     parser.add_argument('--agent', type=str, default=None,
                         help='AI智能体模型路径')
     parser.add_argument('--ai_type', type=str, default='dqn',
-                        choices=['dqn', 'logic', 'minimax', 'naive_minimax'],
-                        help='AI类型：dqn、logic、minimax或naive_minimax')
+                        choices=['dqn', 'logic', 'minimax'],
+                        help='AI类型：dqn、logic、minimax')
     parser.add_argument('--episodes', type=int, default=1000,
                         help='训练回合数')
     parser.add_argument('--render', action='store_true',
@@ -65,9 +64,7 @@ def main():
         elif args.mode == 'logic_ai_vs_minimax':
             # Both players are minimax agents
             start_simplified_game(ai_opponent=True, ai_type='logic', second_ai_type='minimax', render_mode=render_mode_value)
-        elif args.mode == 'logic_vs_naive_minimax':
-            # Compare minimax with naive minimax
-            start_simplified_game(ai_opponent=True, ai_type='logic', second_ai_type='naive_minimax', render_mode=render_mode_value)
+
         elif args.mode == 'train':
             from ai.training import train_single_agent
             train_single_agent(episodes=args.episodes, render=args.render, simplified=True)
